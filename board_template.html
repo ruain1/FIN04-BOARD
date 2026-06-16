@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FIN04 Koski — Energisation and Permit Board</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0e1722; --panel:#17222e; --panel2:#1d2b39; --line:#36495a; --line2:#283845;
+    --ink:#e6edf3; --muted:#93a4b3; --faint:#5c6f7e;
+    --green:#2fb574; --grey:#6e7e8d; --amber:#e2a72e; --unknown:#34424f;
+    --permit:#f0941f; --conflict:#ef4d52; --link:#5fa8e6;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;}
+  body{font-family:'IBM Plex Sans',system-ui,sans-serif;background:var(--bg);color:var(--ink);
+    display:flex;flex-direction:column;height:100vh;-webkit-font-smoothing:antialiased;}
+  header{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;
+    padding:12px 22px;background:linear-gradient(95deg,#102234,#16344e);border-bottom:1px solid var(--line);}
+  header h1{font-family:'Archivo',sans-serif;font-weight:800;font-size:19px;margin:0;letter-spacing:.2px;}
+  header .sub{font-size:12px;color:#b9cad8;margin-top:3px;}
+  header .meta{text-align:right;font-size:11.5px;color:#aebfce;line-height:1.5;}
+  header .meta b{color:#fff;}
+  .hdr-right{display:flex;flex-direction:column;align-items:flex-end;gap:5px;}
+  .sync-btn{font-family:'Archivo',sans-serif;font-size:12px;font-weight:600;color:#cfe0ee;background:#173b5e;
+    border:1px solid #2b5a86;border-radius:7px;padding:6px 14px;cursor:pointer;}
+  .sync-btn:hover{background:#1f5078;color:#fff;}
+  .sync-btn.spin{opacity:.7;cursor:default;}
+  .sync-status{font-size:10.5px;min-height:12px;}
+  main{display:flex;flex:1;min-height:0;}
+
+  /* left: logical tree */
+  .tree{width:280px;flex:none;background:var(--panel);border-right:1px solid var(--line);
+    overflow:auto;padding:10px 6px 20px 10px;font-size:12.5px;}
+  .tree h2{font-family:'Archivo',sans-serif;font-size:11px;letter-spacing:1px;text-transform:uppercase;
+    color:var(--muted);margin:4px 6px 8px;font-weight:700;}
+  .tnode{user-select:none;}
+  .trow{display:flex;align-items:center;gap:5px;padding:3px 6px;border-radius:6px;cursor:pointer;white-space:nowrap;}
+  .trow:hover{background:var(--panel2);}
+  .trow.sel{background:#21425f;}
+  .caret{width:12px;flex:none;color:var(--faint);font-size:10px;text-align:center;transition:transform .12s;}
+  .caret.open{transform:rotate(90deg);}
+  .caret.leaf{visibility:hidden;}
+  .dot{width:8px;height:8px;border-radius:50%;flex:none;}
+  .tname{overflow:hidden;text-overflow:ellipsis;}
+  .tname .lab{color:var(--muted);font-size:10.5px;margin-left:5px;}
+  .tflag{font-family:'IBM Plex Mono',monospace;font-size:9px;font-weight:600;padding:0 4px;border-radius:4px;flex:none;}
+  .tflag.p{background:rgba(240,148,31,.18);color:#f3b56b;}
+  .tflag.c{background:rgba(239,77,82,.18);color:#f3878b;}
+  .kids{margin-left:13px;border-left:1px solid var(--line2);padding-left:2px;}
+
+  /* centre: canvas */
+  .canvas{flex:1;min-width:0;overflow:auto;padding:8px 14px;}
+  .crumb{font-size:12.5px;color:var(--muted);margin:4px 0 8px 2px;}
+  .crumb a{color:var(--link);cursor:pointer;text-decoration:none;}
+  .crumb a:hover{text-decoration:underline;}
+  .crumb .sep{color:var(--faint);margin:0 7px;}
+  svg.board{width:100%;height:auto;display:block;}
+  .node{cursor:pointer;}
+  .node:hover .nbox{stroke-width:3;}
+  text{font-family:'IBM Plex Sans',sans-serif;}
+
+  /* right: detail */
+  .panel{width:300px;flex:none;background:var(--panel);border-left:1px solid var(--line);
+    padding:14px 16px;overflow:auto;font-size:13px;}
+  .panel h2{font-family:'Archivo',sans-serif;font-size:11px;letter-spacing:1px;text-transform:uppercase;
+    color:var(--muted);margin:0 0 8px 0;font-weight:700;}
+  .panel .sec{margin-bottom:18px;}
+  .legend-row{display:flex;align-items:center;gap:9px;margin:5px 0;font-size:12px;color:#cdd9e4;}
+  .sw{width:15px;height:15px;border-radius:4px;flex:none;border:1px solid rgba(255,255,255,.12);}
+  .ring{width:15px;height:15px;border-radius:4px;flex:none;background:transparent;}
+  .detail{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:11px 12px;}
+  .detail .nm{font-weight:700;font-size:14px;margin-bottom:2px;}
+  .detail .ty{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:9px;}
+  .kv{display:flex;justify-content:space-between;gap:8px;margin:4px 0;font-size:12.5px;}
+  .kv span:first-child{color:var(--muted);}
+  .kv .mono{font-family:'IBM Plex Mono',monospace;font-size:11.5px;}
+  .pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:600;}
+  .pill.active{background:rgba(47,181,116,.16);color:#5fd6a0;border:1px solid rgba(47,181,116,.4);}
+  .pill.issued{background:rgba(240,148,31,.14);color:#f3b56b;border:1px solid rgba(240,148,31,.4);}
+  .pill.suspended{background:rgba(146,164,179,.14);color:#b6c4d0;border:1px solid rgba(146,164,179,.35);}
+  .permit-line{font-size:12px;margin:6px 0;padding-left:9px;border-left:2px solid var(--permit);}
+  .conflict-card{background:rgba(239,77,82,.09);border:1px solid rgba(239,77,82,.45);border-radius:8px;
+    padding:9px 11px;margin-bottom:9px;font-size:12px;}
+  .conflict-card .hd{color:#f3878b;font-weight:700;display:flex;justify-content:space-between;gap:8px;}
+  .conflict-card .rs{color:#cdd9e4;margin-top:3px;}
+  .conflict-card .pm{color:var(--muted);margin-top:3px;font-size:11px;}
+  .btn{margin-top:10px;display:inline-block;background:#1f5e95;color:#fff;border:none;border-radius:6px;
+    padding:7px 12px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit;}
+  .btn:hover{background:#266fae;}
+  .muted{color:var(--muted);}
+
+  /* top nav tabs */
+  header .tabs{display:flex;gap:4px;align-self:flex-end;}
+  .tab{font-family:'Archivo',sans-serif;font-size:12.5px;font-weight:600;color:#b9cad8;background:transparent;
+    border:1px solid transparent;border-bottom:none;border-radius:7px 7px 0 0;padding:8px 16px;cursor:pointer;
+    margin-bottom:-13px;}
+  .tab:hover{background:rgba(255,255,255,.07);color:#fff;}
+  .tab.active{background:var(--bg);color:#fff;border-color:var(--line);}
+  .tab .badge{display:inline-block;margin-left:7px;background:var(--conflict);color:#fff;
+    font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:700;border-radius:999px;padding:0 6px;}
+
+  /* view switching */
+  #viewport{flex:1;min-height:0;display:flex;}
+  .view{display:none;}
+  .view.active{display:flex;}
+  .view-main.active{display:flex;}                      /* topology keeps its 3-pane flex row */
+  #view-overview.active,#view-permits.active{display:block;width:100%;overflow:auto;padding:20px 26px 48px;}
+  .view-pad-h{font-family:'Archivo',sans-serif;font-weight:800;font-size:16px;margin:0 0 4px;}
+  .view-pad-sub{font-size:12px;color:var(--muted);margin:0 0 18px;max-width:760px;line-height:1.5;}
+
+  /* summary tiles */
+  .tiles{display:flex;gap:13px;flex-wrap:wrap;margin-bottom:8px;}
+  .tile{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:13px 17px;min-width:118px;}
+  .tile .n{font-family:'Archivo',sans-serif;font-weight:800;font-size:27px;line-height:1;}
+  .tile .l{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-top:7px;}
+  .tile.warn{border-color:rgba(239,77,82,.5);}
+  .tile.warn .n{color:var(--conflict);}
+  .tile.ok .n{color:var(--green);}
+
+  /* data tables */
+  .tbl-wrap{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden;}
+  table.data{width:100%;border-collapse:collapse;font-size:12.5px;}
+  table.data th{font-family:'Archivo',sans-serif;font-size:10.5px;letter-spacing:.7px;text-transform:uppercase;
+    color:var(--muted);text-align:left;padding:10px 12px;background:var(--panel2);border-bottom:1px solid var(--line);
+    position:sticky;top:0;z-index:1;}
+  table.data td{padding:9px 12px;border-bottom:1px solid var(--line2);vertical-align:middle;}
+  table.data tbody tr{cursor:pointer;}
+  table.data tbody tr:hover{background:var(--panel2);}
+  table.data tr.conflict-row{background:rgba(239,77,82,.08);}
+  table.data tr.conflict-row:hover{background:rgba(239,77,82,.14);}
+  .cell-dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:7px;vertical-align:middle;}
+  .count-badge{display:inline-block;min-width:20px;text-align:center;font-family:'IBM Plex Mono',monospace;
+    font-weight:700;font-size:11px;padding:1px 7px;border-radius:999px;}
+  .count-badge.c{background:rgba(239,77,82,.18);color:#f3878b;}
+  .count-badge.p{background:rgba(240,148,31,.16);color:#f3b56b;}
+  .count-badge.z{background:var(--panel2);color:var(--faint);}
+  .conf-with{font-size:11px;color:#f3878b;}
+
+  /* permits page conflict section */
+  .banner{border-radius:10px;padding:12px 16px;margin:6px 0 20px;font-size:13px;font-weight:600;}
+  .banner.danger{background:rgba(239,77,82,.12);border:1px solid rgba(239,77,82,.5);color:#f3a0a3;}
+  .banner.clear{background:rgba(47,181,116,.1);border:1px solid rgba(47,181,116,.4);color:#7bd9ab;}
+  .sect-h{font-family:'Archivo',sans-serif;font-size:13px;font-weight:700;letter-spacing:.4px;margin:28px 0 12px;
+    display:flex;align-items:center;gap:10px;}
+  .conf-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:12px;}
+  .conf-big{background:rgba(239,77,82,.07);border:1px solid rgba(239,77,82,.45);border-radius:10px;padding:13px 15px;}
+  .conf-big .pair{font-weight:700;font-size:13.5px;color:#f3a0a3;margin-bottom:5px;}
+  .conf-big .rs{font-size:12.5px;color:#cdd9e4;margin-bottom:9px;}
+  .conf-big .pmrow{font-size:12px;margin:4px 0;padding-left:10px;border-left:2px solid var(--conflict);}
+  .conf-big .sev{float:right;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#f3878b;
+    border:1px solid rgba(239,77,82,.5);border-radius:4px;padding:0 6px;}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>FIN04 Koski &nbsp;Energisation and Permit Board</h1>
+  </div>
+  <nav class="tabs">
+    <button class="tab" data-view="overview" onclick="switchView('overview')">Overview</button>
+    <button class="tab" data-view="permits"  onclick="switchView('permits')">Active permits<span class="badge" id="tab-conf-badge" style="display:none"></span></button>
+    <button class="tab" data-view="topology" onclick="switchView('topology')">SLD</button>
+  </nav>
+  <div class="hdr-right">
+    <button class="sync-btn" id="syncBtn" onclick="syncNow()" title="Fetch the latest snapshot">&#8635;&nbsp;Sync</button>
+    <div class="meta" id="meta"></div>
+    <div class="sync-status muted" id="syncStatus"></div>
+  </div>
+</header>
+<div id="viewport">
+
+<section id="view-overview" class="view"></section>
+
+<section id="view-permits" class="view"></section>
+
+<main id="view-topology" class="view view-main">
+  <nav class="tree">
+    <h2>Topology</h2>
+    <div id="tree"></div>
+  </nav>
+  <div class="canvas">
+    <div class="crumb" id="crumb"></div>
+    <svg class="board" id="board" viewBox="0 0 1040 560" preserveAspectRatio="xMidYMin meet"></svg>
+  </div>
+  <aside class="panel">
+    <div class="sec">
+      <h2>Legend</h2>
+      <div class="legend-row"><span class="sw" style="background:var(--green)"></span>Energised</div>
+      <div class="legend-row"><span class="sw" style="background:var(--grey)"></span>De-energised</div>
+      <div class="legend-row"><span class="sw" style="background:var(--amber)"></span>Conditional</div>
+      <div class="legend-row"><span class="ring" style="border:2.5px solid var(--permit)"></span>Active permit</div>
+      <div class="legend-row"><span class="ring" style="border:2.5px dashed var(--permit)"></span>Issued permit</div>
+      <div class="legend-row"><span class="ring" style="border:2.5px solid var(--conflict)"></span>Conflict</div>
+    </div>
+    <div class="sec">
+      <h2>Selected</h2>
+      <div id="detail"><div class="muted" style="font-size:12.5px">Click an asset on the board or tree.</div></div>
+    </div>
+    <div class="sec">
+      <h2>Active conflicts</h2>
+      <div id="conflicts"></div>
+    </div>
+  </aside>
+</main>
+
+</div><!-- /viewport -->
+
+<script>
+/* ============================================================================
+   DATA. TOPOLOGY is injected at build time (self-contained file). OVERLAY is a
+   demo permit/energisation set so the feature set shows on open.
+   GO LIVE: serve the folder over http and uncomment the fetch at the bottom to
+   read the poller's snapshot.json instead. acc_poller.py writes that shape.
+   ============================================================================ */
+const TOPOLOGY = /*__TOPOLOGY__*/ null;
+const OVERLAY  = /*__OVERLAY__*/ {permits:[],energisation:{},conflicts:[]};
+
+/* merge overlay onto topology */
+function applyOverlay(topo, ov){
+  const byid = Object.fromEntries(topo.assets.map(a=>[a.id,a]));
+  for (const [id,st] of Object.entries(ov.energisation||{})) if (byid[id]) byid[id].energisation = st;
+  topo.permits = ov.permits || [];
+  topo.conflicts = ov.conflicts || [];
+  return topo;
+}
+let DATA = applyOverlay(structuredClone(TOPOLOGY), OVERLAY);
+
+/* indices */
+let byId={}, childrenOf={};
+function reindex(){
+  byId = Object.fromEntries(DATA.assets.map(a=>[a.id,a]));
+  childrenOf = {};
+  for (const a of DATA.assets){ const p=a.parent||"__root__"; (childrenOf[p]??=[]).push(a); }
+}
+reindex();
+
+/* manual sync: pull the latest snapshot.json (live energisation/permits/conflicts
+   from the poller) and apply it over the embedded topology. Falls back to the
+   embedded snapshot if none is reachable (e.g. opened from disk). */
+function setSyncStatus(msg, ok){
+  const el=document.getElementById("syncStatus");
+  if (el){ el.textContent=msg; el.style.color = ok===false ? "#f0a0a0" : ok===true ? "#5fd6a0" : "var(--muted)"; }
+}
+async function syncNow(){
+  const btn=document.getElementById("syncBtn");
+  if (btn){ btn.classList.add("spin"); btn.disabled=true; }
+  setSyncStatus("Syncing\u2026");
+  try{
+    const r = await fetch("./snapshot.json?t=" + Date.now(), {cache:"no-store"});
+    if (!r.ok) throw new Error("no snapshot");
+    const d = await r.json();
+    const emap = {};
+    (d.assets||[]).forEach(a=>{ if (a.energisation) emap[a.id]=a.energisation; });
+    DATA = applyOverlay(structuredClone(TOPOLOGY),
+                        {energisation:emap, permits:d.permits||[], conflicts:d.conflicts||[]});
+    if (d.meta && d.meta.generated) DATA.meta.generated = d.meta.generated;
+    reindex();
+    render();
+    setSyncStatus("Synced " + new Date().toLocaleTimeString(), true);
+  } catch(e){
+    setSyncStatus("Live snapshot unavailable; showing embedded", false);
+  } finally {
+    if (btn){ btn.classList.remove("spin"); btn.disabled=false; }
+  }
+}
+
+let currentParent = null;   // null = site overview
+let selectedId = null;
+let expandedCat = null;     // grouped loadboard: which category is expanded
+let selectedWay = null;     // a clicked card/tile (virtual leaf) for the detail panel
+const expanded = new Set();
+
+/* helpers */
+const energColor = s => ({energised:"var(--green)",deenergised:"var(--grey)",conditional:"var(--amber)"}[s]||"var(--unknown)");
+const energInk   = s => ({energised:"#5fd6a0",deenergised:"#aebcc9",conditional:"#f0c34f"}[s]||"#9fb0bd");
+const permitsFor = id => DATA.permits.filter(p=>p.asset===id);
+const activeFor  = id => permitsFor(id).some(p=>p.status==="active"||p.status==="suspended");
+const issuedFor  = id => permitsFor(id).some(p=>p.status==="issued");
+const conflictsFor = id => DATA.conflicts.filter(c=>c.assets.includes(id));
+const kids = id => childrenOf[id]||[];
+const cap = s => s? s.charAt(0).toUpperCase()+s.slice(1):s;
+const fmt = iso => { try{return new Date(iso).toLocaleString();}catch(e){return iso;} };
+const typeLabel = t => ({source:"Source",transformer:"Transformer",bus:"Switchboard",board:"Board",
+  ups:"UPS",load:"Circuit",breaker:"Breaker",ring:"MV ring",pod:"POD",busway:"Busway",switchgear:"Switchgear",cooling:"Cooling"}[t]||t);
+
+/* "does this subtree contain a permit / conflict" — for tree roll-up flags */
+const subtreeFlag = {};
+function computeFlags(){
+  for (const k in subtreeFlag) delete subtreeFlag[k];
+  function walk(id){
+    let p = permitsFor(id).length>0, c = conflictsFor(id).length>0;
+    for (const ch of kids(id)){ const f=walk(ch.id); p=p||f.p; c=c||f.c; }
+    return subtreeFlag[id]={p,c};
+  }
+  for (const r of kids("__root__")) walk(r.id);
+}
+computeFlags();
+
+/* ---------- geometry shared ---------- */
+const HALF_H = t => t==="bus"?9 : 23;
+function ringRect(x,y,w,h,col,dashed){
+  return `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="10" fill="none" stroke="${col}" stroke-width="2.5" ${dashed?'stroke-dasharray="6 4"':''} pointer-events="none"/>`;
+}
+function dropper(a,b,col,w,dashed){
+  const ay=a.y+HALF_H(a.type), by=b.y-HALF_H(b.type), my=(ay+by)/2;
+  const da=dashed?'stroke-dasharray="5 4"':'';
+  return `<polyline points="${a.x},${ay} ${a.x},${my} ${b.x},${my} ${b.x},${by}" fill="none" stroke="${col}" stroke-width="${w}" ${da}/>`;
+}
+function nodeBox(n,opts={}){
+  const col=energColor(n.energisation);
+  const act=activeFor(n.id), iss=issuedFor(n.id), conf=conflictsFor(n.id).length>0;
+  const sel=n.id===selectedId;
+  const sub=(n.childLayout)?"":"";
+  let s=`<g class="node" data-id="${n.id}">`;
+  if (n.type==="bus"){
+    const w=opts.w||260,h=14,x=n.x-w/2,y=n.y-h/2;
+    s+=`<rect class="nbox" x="${x}" y="${y}" width="${w}" height="${h}" rx="4" fill="${col}" stroke="${sel?'#fff':col}" stroke-width="${sel?2:1}"/>`;
+    s+=`<text x="${n.x}" y="${y-10}" text-anchor="middle" font-size="13" font-weight="700" fill="var(--ink)">${n.name}</text>`;
+    if (conf) s+=ringRect(x-5,y-5,w+10,h+10,"var(--conflict)",false);
+    else if (act) s+=ringRect(x-5,y-5,w+10,h+10,"var(--permit)",false);
+    else if (iss) s+=ringRect(x-5,y-5,w+10,h+10,"var(--permit)",true);
+    if (n.childLayout) s+=`<text x="${n.x}" y="${y+32}" text-anchor="middle" font-size="10" fill="var(--link)">tap to open schedule</text>`;
+  } else {
+    const w=opts.w||126,h=opts.h||48,x=n.x-w/2,y=n.y-h/2;
+    s+=`<rect class="nbox" x="${x}" y="${y}" width="${w}" height="${h}" rx="8" fill="var(--panel2)" stroke="${col}" stroke-width="2.5"/>`;
+    // energisation is shown by the border colour; no inner dot, so labels never collide with it.
+    const innerW=w-16;
+    const tl=n.name.length*6.9>innerW ? ` textLength="${innerW}" lengthAdjust="spacingAndGlyphs"` : "";
+    s+=`<text x="${n.x}" y="${y+19}" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--ink)"${tl}>${n.name}</text>`;
+    const sub2 = opts.sub || typeLabel(n.type);
+    const stl=sub2.length*5.0>innerW ? ` textLength="${innerW}" lengthAdjust="spacingAndGlyphs"` : "";
+    s+=`<text x="${n.x}" y="${y+35}" text-anchor="middle" font-size="10" fill="var(--muted)"${stl}>${sub2}</text>`;
+    if (n.childLayout){ s+=`<text x="${x+w-7}" y="${y+h-6}" text-anchor="end" font-size="14" fill="var(--link)">&#8853;</text>`; }
+    if (act||iss){ s+=`<rect x="${x+w-20}" y="${y-9}" width="20" height="16" rx="4" fill="var(--permit)"/>`;
+      s+=`<text x="${x+w-10}" y="${y+3}" text-anchor="middle" font-size="10" font-weight="800" fill="#1a1206">P</text>`; }
+    if (conf) s+=ringRect(x-6,y-6,w+12,h+12,"var(--conflict)",false);
+    else if (act) s+=ringRect(x-6,y-6,w+12,h+12,"var(--permit)",false);
+    else if (iss) s+=ringRect(x-6,y-6,w+12,h+12,"var(--permit)",true);
+  }
+  s+=`</g>`; return s;
+}
+
+/* ---------- per-tier renderers ---------- */
+function visibleEdges(idset){ return DATA.edges.filter(e=>idset.has(e.from)&&idset.has(e.to)); }
+
+function renderGeneric(parentId, incomer){
+  // used for site (no incomer), pod, board
+  const ns = (parentId===null)? kids("__root__") : kids(parentId);
+  let nodes = ns.slice();
+  let svg="";
+  if (incomer){ nodes=[incomer,...nodes]; }
+  const idset=new Set(nodes.map(n=>n.id));
+  // edges among visible
+  visibleEdges(idset).forEach(e=>{
+    const a=byId[e.from]||(incomer&&incomer.id===e.from?incomer:null);
+    const b=byId[e.to]  ||(incomer&&incomer.id===e.to?incomer:null);
+    if(!a||!b) return;
+    const dashed=(e.type!=="feed")||e.state!=="closed";
+    const col=e.type==="feed"?"var(--line)":"var(--faint)";
+    svg+=dropper(a,b,col,e.type==="feed"?1.8:1.6,dashed);
+  });
+  nodes.forEach(n=>{
+    let o={};
+    if (n.type==="bus") o={w:300};
+    else if (n.type==="ring") o={w:150,h:52,sub:n.detail||""};
+    svg+=nodeBox(n,o);
+  });
+  return svg;
+}
+
+function renderRing(ringId){
+  const members = kids(ringId);
+  const idset=new Set(members.map(n=>n.id));
+  const re=DATA.edges.filter(e=>e.type==="ring"&&idset.has(e.from)&&idset.has(e.to));
+  let svg="";
+  // ring conductor bus line across the tops
+  const y = members[0]? members[0].y : 300;
+  // draw segment links between consecutive members; normal_open shown as a gap with marker
+  re.forEach(e=>{
+    const a=byId[e.from], b=byId[e.to];
+    if (Math.abs(a.x-b.x) > 1.5*(1040/(members.length+1))) {
+      // closing leg (first<->last): draw an arched return under the row
+      const yy=y+78;
+      const open = e.state!=="closed";
+      svg+=`<path d="M ${a.x} ${a.y+HALF_H('pod')} C ${a.x} ${yy}, ${b.x} ${yy}, ${b.x} ${b.y+HALF_H('pod')}" fill="none" stroke="var(--faint)" stroke-width="1.6" ${open?'stroke-dasharray="6 4"':''}/>`;
+      if (open){ const mx=(a.x+b.x)/2; svg+=`<text x="${mx}" y="${yy+14}" text-anchor="middle" font-size="10" fill="var(--amber)">ring normally open</text>`; }
+      return;
+    }
+    const open = e.state!=="closed";
+    const yb=a.y-HALF_H('pod')-26;
+    svg+=`<polyline points="${a.x},${a.y-HALF_H('pod')} ${a.x},${yb} ${b.x},${yb} ${b.x},${b.y-HALF_H('pod')}" fill="none" stroke="var(--line)" stroke-width="1.8" ${open?'stroke-dasharray="6 4"':''}/>`;
+    if (open){ const mx=(a.x+b.x)/2; svg+=`<g><circle cx="${mx}" cy="${yb}" r="9" fill="var(--bg)" stroke="var(--amber)" stroke-width="1.5"/><text x="${mx}" y="${yb+3.5}" text-anchor="middle" font-size="9" font-weight="700" fill="var(--amber)">N/O</text></g>`; }
+  });
+  // A/B injection stubs
+  DATA.edges.filter(e=>(e.from==="MV-A"||e.from==="MV-B")&&idset.has(e.to)).forEach(e=>{
+    const b=byId[e.to]; const tag=e.from==="MV-A"?"A":"B";
+    const sy=b.y+HALF_H('pod')+8;
+    svg+=`<line x1="${b.x}" y1="${b.y+HALF_H('pod')}" x2="${b.x}" y2="${sy+18}" stroke="var(--line)" stroke-width="1.8"/>`;
+    svg+=`<rect x="${b.x-12}" y="${sy+18}" width="24" height="18" rx="4" fill="var(--panel2)" stroke="var(--line)"/>`;
+    svg+=`<text x="${b.x}" y="${sy+31}" text-anchor="middle" font-size="11" font-weight="700" fill="#9fc6ec">${tag}</text>`;
+  });
+  members.forEach(n=>{ svg+=nodeBox(n,{w:104,h:46,sub:n.id}); });
+  // caption
+  svg+=`<text x="20" y="24" font-size="12" fill="var(--muted)">Fed from MV Building A and B. Tap a POD to open its single line.</text>`;
+  return svg;
+}
+
+const VIEWBOX = {site:"0 0 1040 540", ring:"0 0 1040 440", pod:"0 0 960 600", board:"0 0 1040 600", landlord:"0 0 1040 440"};
+
+// Grouped board: load categories as tiles; tap one to expand its ways inline
+// (single category at a time, so each expansion fits a page without scrolling).
+const CAT_COLOR = c => /Spare/.test(c) ? "var(--grey)"
+                     : /Fan-coil|FCU|AHU|CRAH|Chiller|buffer|Flow/.test(c) ? "var(--green)"
+                     : /Fire|Smoke|VESDA|Sprinkler|suppress|damper/i.test(c) ? "#f3878b"
+                     : "var(--link)";
+const MAXCARDS = 30;
+const waysHeight = n => { const shown=Math.min(n,MAXCARDS), rows=Math.ceil(shown/6); return 150 + rows*52 + (n>MAXCARDS?58:30); };
+
+function renderLoadboard(boardId){
+  const node=byId[boardId];
+  const cats=Object.entries(node.categories||{}).sort((a,b)=>b[1]-a[1]);
+  let svg=`<text x="20" y="26" font-size="12" fill="var(--muted)">${node.ways||0} ways on this board, grouped by what they feed. Tap a group to list its circuits.</text>`;
+  // category tiles, 3 across
+  const cols=3, tw=300, th=86, x0=180, dx=330, y0=70, dy=104;
+  cats.forEach(([cat,count],i)=>{
+    const r=Math.floor(i/cols), c=i%cols, x=x0+c*dx, y=y0+r*dy, col=CAT_COLOR(cat);
+    const sel = expandedCat===cat;
+    svg+=`<g class="catnode" data-cat="${cat}" style="cursor:pointer">`;
+    svg+=`<rect x="${x-tw/2}" y="${y}" width="${tw}" height="${th}" rx="9" fill="var(--panel2)" stroke="${sel?'#fff':col}" stroke-width="${sel?2.5:2}"/>`;
+    svg+=`<text x="${x-tw/2+16}" y="${y+34}" font-size="14.5" font-weight="700" fill="var(--ink)">${cat}</text>`;
+    svg+=`<text x="${x-tw/2+16}" y="${y+62}" font-size="12" fill="var(--muted)">${count} circuit${count===1?'':'s'}</text>`;
+    svg+=`<text x="${x+tw/2-14}" y="${y+52}" text-anchor="end" font-family="'Archivo'" font-weight="800" font-size="30" fill="${col}">${count}</text>`;
+    svg+=`<text x="${x+tw/2-14}" y="${y+th-8}" text-anchor="end" font-size="11" fill="var(--link)">${sel?'tap to close':'tap to open'}</text>`;
+    svg+=`</g>`;
+  });
+  const tilesBottom = y0 + Math.ceil(cats.length/cols)*dy;
+  // expanded category: list its circuits as cards (6 across)
+  if (expandedCat && node.categories[expandedCat]!==undefined){
+    const count=node.categories[expandedCat], col=CAT_COLOR(expandedCat);
+    const ly=tilesBottom+16;
+    svg+=`<line x1="20" y1="${ly}" x2="1020" y2="${ly}" stroke="var(--line)"/>`;
+    svg+=`<text x="20" y="${ly+24}" font-size="13" font-weight="700" fill="var(--ink)">${expandedCat} &middot; ${count} circuit${count===1?'':'s'}</text>`;
+    const cc=6, cw=146, cgap=10, cx0=68, cy0=ly+44, cdy=52, abbr=shortCat(expandedCat);
+    const shown=Math.min(count,MAXCARDS);
+    const tags = (expandedCat==="Fan-coil units" && Array.isArray(node.fcu_tags)) ? node.fcu_tags : null;
+    for (let k=0;k<shown;k++){
+      const r=Math.floor(k/cc), c=k%cc, x=cx0+c*(cw+cgap), y=cy0+r*cdy;
+      const lbl = tags && tags[k] ? tags[k] : `${abbr} ${String(k+1).padStart(2,'0')}`;
+      svg+=`<g class="waycard" data-board="${boardId}" data-cat="${expandedCat}" data-idx="${k}" data-lbl="${lbl}" style="cursor:pointer">`;
+      svg+=`<rect x="${x}" y="${y}" width="${cw}" height="40" rx="6" fill="var(--panel2)" stroke="${col}" stroke-width="1.4"/>`;
+      svg+=`<text x="${x+12}" y="${y+24}" font-size="12" font-weight="600" fill="var(--ink)">${lbl}</text></g>`;
+    }
+    if (count>MAXCARDS){
+      const y=cy0+Math.ceil(shown/cc)*cdy;
+      svg+=`<text x="68" y="${y+16}" font-size="12" fill="var(--muted)">+ ${count-MAXCARDS} more identical ${abbr.toLowerCase()} circuits</text>`;
+    }
+  }
+  return svg;
+}
+function shortCat(c){
+  return ({"Fan-coil units":"FCU","Motorized buffer valve":"Valve","Flow sensors":"Flow sensor",
+           "Security/BMS rack":"BMS rack","Smoke extract/damper":"Smoke","Fire/smoke damper":"Damper",
+           "Leak detection":"Leak det","Small power/socket":"Sml power","Spare (equipped)":"Spare",
+           "Heat trace":"Heat trace","Car charger/EV":"EV charger","Water/sewage":"Water","VAV controller":"VAV"}[c])
+         || c.split(/[ \/]/)[0];
+}
+
+function currentLayout(){ return currentParent===null ? "site" : (byId[currentParent].childLayout||"pod"); }
+
+function render(){
+  document.getElementById("meta").innerHTML =
+    `<b>${DATA.meta.project}</b><br>Snapshot ${fmt(DATA.meta.generated)}`;
+  const layout=currentLayout();
+  const board=document.getElementById("board");
+  // viewBox: fixed width per tier, height grown to fit the lowest node plus the
+  // stubs/labels drawn beneath it, so added rows (CRAHs, 2nd ring chain, longer
+  // board schedules) never fall outside the canvas.
+  const W = ({site:1040,ring:1040,pod:960,board:1040,landlord:1040,loadboard:1040}[layout])||1040;
+  let H;
+  if (layout==="loadboard"){
+    const node=byId[currentParent];
+    const ncat=Object.keys(node.categories||{}).length;
+    const tilesBottom = 70 + Math.ceil(ncat/3)*104;
+    H = (expandedCat && node.categories[expandedCat]!==undefined)
+        ? tilesBottom + 16 + waysHeight(node.categories[expandedCat])
+        : tilesBottom + 24;
+  } else {
+    const vbNodes = (layout==="site") ? kids("__root__") : kids(currentParent);
+    const maxY = vbNodes.length ? Math.max(...vbNodes.map(n=>n.y)) : 300;
+    const pad = (layout==="ring") ? 100 : 72;   // ring needs room for the A/B feed stubs + tags
+    H = Math.max(Math.ceil(maxY+pad), 320);
+  }
+  board.setAttribute("viewBox", `0 0 ${W} ${Math.ceil(H)}`);
+  let svg="";
+  if (layout==="site"){ svg=renderGeneric(null,null); }
+  else if (layout==="ring"){ svg=renderRing(currentParent); }
+  else if (layout==="loadboard"){ svg=renderLoadboard(currentParent); }
+  else if (layout==="landlord"){ svg=renderGeneric(currentParent,null); }
+  else if (layout==="pod"){ svg=renderGeneric(currentParent,null); }
+  else { // board: inject the parent board as incomer at top
+    const p=byId[currentParent];
+    const incomer=Object.assign({},p,{x:520,y:56,_incomer:true,childLayout:null});
+    svg=renderGeneric(currentParent, incomer);
+  }
+  board.innerHTML=svg;
+  board.querySelectorAll(".node").forEach(g=>{
+    const id=g.getAttribute("data-id");
+    g.addEventListener("click",()=>onNodeClick(id));
+  });
+  board.querySelectorAll(".catnode").forEach(g=>{
+    const cat=g.getAttribute("data-cat");
+    g.addEventListener("click",()=>{
+      selectedWay = {kind:"cat", board:currentParent, cat};
+      selectedId=null;
+      expandedCat = (expandedCat===cat)?null:cat;
+      render();
+    });
+  });
+  board.querySelectorAll(".waycard").forEach(g=>{
+    g.addEventListener("click",ev=>{
+      ev.stopPropagation();
+      selectedWay = {kind:"way", board:g.getAttribute("data-board"),
+                     cat:g.getAttribute("data-cat"), idx:+g.getAttribute("data-idx"),
+                     lbl:g.getAttribute("data-lbl")};
+      selectedId=null;
+      renderDetail();
+    });
+  });
+  renderCrumb(); renderTree(); renderConflicts(); renderDetail();
+}
+
+function onNodeClick(id){
+  const n=byId[id];
+  if (!n) return;
+  selectedId=id; selectedWay=null;
+  if (n.childLayout){ currentParent=id; selectedId=null; expandedCat=null; }
+  render();
+}
+
+function pathTo(id){ const p=[]; let n=byId[id]; while(n){p.unshift(n); n=n.parent?byId[n.parent]:null;} return p; }
+
+function crumbLabel(n){
+  if (n.type==="pod") return `${n.id}${n.label?` <span class="muted">(${n.label})</span>`:""}`;   // EPOD01 (POD 1.1)
+  if (n.tag) return `${n.name} <span class="muted">${n.tag}</span>`;                                 // SB DB FIN04.01.L0.EPOD01.DB002
+  return n.name;
+}
+function renderCrumb(){
+  const cr=document.getElementById("crumb");
+  let parts=[`<a onclick="navTo(null)">FIN04</a>`];
+  if (currentParent){ pathTo(currentParent).forEach((n,i,arr)=>{
+    if (i===arr.length-1) parts.push(`<span>${crumbLabel(n)}</span>`);
+    else parts.push(`<a onclick="navTo('${n.id}')">${crumbLabel(n)}</a>`);
+  }); }
+  cr.innerHTML=parts.join(`<span class="sep">/</span>`);
+}
+function navTo(id){ currentParent=id; selectedId=null; selectedWay=null; expandedCat=null; render(); }
+window.navTo=navTo;
+
+/* ---------- logical tree ---------- */
+function renderTree(){
+  const el=document.getElementById("tree");
+  const roots = kids("__root__").filter(n=> n.id!=="MV-A" && n.id!=="MV-B");
+  const homeSel = (currentParent===null && !selectedId && !selectedWay);
+  const home = `<div class="tnode"><div class="trow ${homeSel?'sel':''}" data-home="1" style="cursor:pointer">`+
+               `<span class="caret leaf">&#8962;</span>`+
+               `<span class="tname" data-home="1"><b>FIN04</b><span class="lab">site overview</span></span></div></div>`;
+  el.innerHTML = home + roots.map(n=>treeNode(n,0)).join("");
+  el.querySelector('[data-home]').closest('.trow').addEventListener("click",()=>navTo(null));
+  el.querySelectorAll("[data-tid]").forEach(row=>{
+    row.addEventListener("click",ev=>{
+      ev.stopPropagation();
+      const id=row.getAttribute("data-tid");
+      const part=row.getAttribute("data-part"); // "caret" or "row"
+      if (part==="caret"){ toggle(id); }
+      else { treeActivate(id); }
+    });
+  });
+}
+function toggle(id){ if(expanded.has(id))expanded.delete(id); else expanded.add(id); renderTree(); }
+function treeActivate(id){
+  const n=byId[id];
+  selectedId=id;
+  expandedCat=null; selectedWay=null;
+  if (n.childLayout){ currentParent=id; selectedId=null; expanded.add(id); }
+  else { currentParent=n.parent; }   // show it inside its parent's view
+  // auto-expand ancestors in tree
+  pathTo(id).forEach(a=>expanded.add(a.id));
+  render();
+}
+function treeNode(n,depth){
+  const has=kids(n.id).length>0;
+  const open=expanded.has(n.id);
+  const f=subtreeFlag[n.id]||{};
+  const sel=(n.id===selectedId)||(n.id===currentParent);
+  let flag="";
+  if (f.c) flag=`<span class="tflag c">!</span>`; else if (f.p) flag=`<span class="tflag p">P</span>`;
+  let h=`<div class="tnode">`;
+  h+=`<div class="trow ${sel?'sel':''}">`;
+  h+=`<span class="caret ${has?(open?'open':''):'leaf'}" data-tid="${n.id}" data-part="caret">&#9654;</span>`;
+  h+=`<span class="dot" style="background:${energColor(n.energisation)}" data-tid="${n.id}" data-part="row"></span>`;
+  h+=`<span class="tname" data-tid="${n.id}" data-part="row">${n.name}${n.label?`<span class="lab">${n.label}</span>`:""}</span>`;
+  h+=flag;
+  h+=`</div>`;
+  if (has&&open){ h+=`<div class="kids">`+kids(n.id).map(c=>treeNode(c,depth+1)).join("")+`</div>`; }
+  h+=`</div>`;
+  return h;
+}
+
+/* ---------- right panel ---------- */
+function renderDetail(){
+  const el=document.getElementById("detail");
+  // (a) a clicked load-board card or category tile (virtual leaf)
+  if (selectedWay){
+    const b=byId[selectedWay.board]||{};
+    let h=`<div class="detail">`;
+    if (selectedWay.kind==="way"){
+      const area = b.tag ? b.tag.replace(/\.DB\d+$/,"") : "";
+      const wtag = area ? `${area}.${selectedWay.lbl}` : selectedWay.lbl;
+      h+=`<div class="nm">${selectedWay.lbl}</div><div class="ty">Circuit &middot; ${selectedWay.cat}</div>`;
+      h+=`<div class="kv"><span>Asset tag</span><span class="mono">${wtag}</span></div>`;
+      h+=`<div class="kv"><span>On board</span><span>${b.name||selectedWay.board}</span></div>`;
+      if (b.tag) h+=`<div class="kv"><span>Board tag</span><span class="mono">${b.tag}</span></div>`;
+      if (b.source) h+=`<div class="kv"><span>Fed from</span><span class="mono">${b.source}</span></div>`;
+      if (selectedWay.cat==="Fan-coil units" && Array.isArray(b.fcu_cables) && b.fcu_cables[selectedWay.idx])
+        h+=`<div class="kv"><span>Fan-wall cable</span><span class="mono">${b.fcu_cables[selectedWay.idx]}</span></div>`;
+      if (b.feed_note) h+=`<div class="kv"><span>Feed</span><span>${b.feed_note}</span></div>`;
+    } else {
+      h+=`<div class="nm">${selectedWay.cat}</div><div class="ty">Load group &middot; ${b.name||""}</div>`;
+      h+=`<div class="kv"><span>Circuits</span><span>${(b.categories||{})[selectedWay.cat]||0}</span></div>`;
+      if (b.tag) h+=`<div class="kv"><span>Board tag</span><span class="mono">${b.tag}</span></div>`;
+      if (b.source) h+=`<div class="kv"><span>Board fed from</span><span class="mono">${b.source}</span></div>`;
+    }
+    h+=`</div>`; el.innerHTML=h; return;
+  }
+  if(!selectedId){ el.innerHTML=`<div class="muted" style="font-size:12.5px">Click an asset on the board or tree.</div>`; return; }
+  const n=byId[selectedId];
+  const perms=permitsFor(n.id), confs=conflictsFor(n.id);
+  let h=`<div class="detail"><div class="nm">${n.name}</div><div class="ty">${typeLabel(n.type)}${n.label?` &middot; ${n.label}`:""}</div>`;
+  h+=`<div class="kv"><span>Energisation</span><span style="color:${energInk(n.energisation)}">${cap(n.energisation)}</span></div>`;
+  h+=`<div class="kv"><span>Asset tag</span><span class="mono">${n.tag||n.id}</span></div>`;
+  if (n.rating) h+=`<div class="kv"><span>Rating</span><span class="mono">${n.rating}</span></div>`;
+  if (n.fn) h+=`<div class="kv"><span>Function</span><span>${n.fn}</span></div>`;
+  if (n.cat) h+=`<div class="kv"><span>Category</span><span>${n.cat}</span></div>`;
+  if (n.source) h+=`<div class="kv"><span>Fed from</span><span class="mono">${n.source}</span></div>`;
+  if (n.fed) h+=`<div class="kv"><span>Supply</span><span>${n.fed}</span></div>`;
+  if (n.ways) h+=`<div class="kv"><span>Ways</span><span>${n.ways}</span></div>`;
+  if (n.feed_note) h+=`<div class="kv"><span>Feed</span><span>${n.feed_note}</span></div>`;
+  if (n.categories){
+    h+=`<div style="margin-top:9px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Feeds</div>`;
+    Object.entries(n.categories).sort((a,b)=>b[1]-a[1]).forEach(([c,v])=>{
+      h+=`<div class="kv"><span>${c}</span><span>${v}</span></div>`; });
+  }
+  if (perms.length){
+    h+=`<div style="margin-top:9px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Permits</div>`;
+    perms.forEach(p=>{ h+=`<div class="permit-line"><span>${p.id} &middot; ${p.title}</span><br><span class="pill ${p.status}">${p.status}</span> <span class="muted" style="font-size:11px">${p.from} to ${p.to}</span></div>`; });
+  } else { h+=`<div class="kv" style="margin-top:8px"><span>Permits</span><span class="muted">none</span></div>`; }
+  if (confs.length) h+=`<div style="margin-top:9px;color:#f3878b;font-size:12px;font-weight:600">In ${confs.length} conflict(s)</div>`;
+  h+=`</div>`;
+  if (kids(n.id).length||n.childLayout) h+=`<button class="btn" onclick="navTo('${n.id}')">Open ${n.childLayout==='board'?'breaker schedule':n.childLayout==='ring'?'ring':n.childLayout==='loadboard'?'load schedule':'single line'}</button>`;
+  el.innerHTML=h;
+}
+function renderConflicts(){
+  const el=document.getElementById("conflicts");
+  if(!DATA.conflicts.length){ el.innerHTML=`<div class="muted" style="font-size:12.5px">No conflicts.</div>`; return; }
+  el.innerHTML=DATA.conflicts.map(c=>`
+    <div class="conflict-card">
+      <div class="hd"><span>${c.assets.map(a=>byId[a]?byId[a].name:a).join("  +  ")}</span><span>${(c.severity||"").toUpperCase()}</span></div>
+      <div class="rs">${c.reason}</div>
+      <div class="pm">Permits: ${c.permits.join(", ")}</div>
+    </div>`).join("");
+}
+
+/* ============================================================================
+   VIEWS: overview (landing), active permits, topology (the 3-pane board above)
+   All three read the same DATA. Topology = render(); the others are tables.
+   ============================================================================ */
+let currentView = "overview";
+
+function subtreeIds(id){ const out=[]; (function w(i){ out.push(i); for(const c of kids(i)) w(c.id); })(id); return out; }
+
+function podRollup(podId){
+  const ids = subtreeIds(podId), idset = new Set(ids);
+  const states = ids.map(i=>byId[i].energisation);
+  const de = states.filter(s=>s==="deenergised").length;
+  const co = states.filter(s=>s==="conditional").length;
+  let label, state;
+  if (de===states.length){ label="De-energised"; state="deenergised"; }
+  else if (de===0 && co===0){ label="Energised"; state="energised"; }
+  else { label="Mixed"; state="conditional"; }
+  const permits  = DATA.permits.filter(p=>idset.has(p.asset));
+  const conflicts= DATA.conflicts.filter(c=>c.assets.some(a=>idset.has(a)));
+  return {label, state, nPermits:permits.length, nConflicts:conflicts.length};
+}
+
+function badge(n, kind){
+  const cls = n===0 ? "z" : kind;
+  return `<span class="count-badge ${cls}">${n}</span>`;
+}
+
+function switchView(name){
+  currentView = name;
+  document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
+  document.querySelectorAll(".tab").forEach(t=>t.classList.remove("active"));
+  document.getElementById("view-"+name).classList.add("active");
+  const tab=document.querySelector('.tab[data-view="'+name+'"]'); if(tab) tab.classList.add("active");
+  if (name==="overview") renderOverview();
+  else if (name==="permits") renderPermits();
+  else render();
+}
+window.switchView=switchView;
+
+function updateTabBadges(){
+  const b=document.getElementById("tab-conf-badge");
+  const n=DATA.conflicts.length;
+  if (n>0){ b.textContent=n; b.style.display="inline-block"; } else { b.style.display="none"; }
+}
+
+/* jump from a table row into the topology board */
+function gotoPod(id){ switchView("topology"); navTo(id); }
+function gotoAsset(id){ switchView("topology"); treeActivate(id); }
+window.gotoPod=gotoPod; window.gotoAsset=gotoAsset;
+
+/* ---------- OVERVIEW (landing, tabulated) ---------- */
+function renderOverview(){
+  const el=document.getElementById("view-overview");
+  const podList=DATA.assets.filter(a=>a.type==="pod");
+  const rolls=podList.map(p=>({p, r:podRollup(p.id)}));
+  let nEn=0,nMix=0,nDe=0;
+  rolls.forEach(({r})=>{ if(r.state==="energised")nEn++; else if(r.state==="deenergised")nDe++; else nMix++; });
+  const totConf=DATA.conflicts.length, totPerm=DATA.permits.length;
+
+  // problems first: conflicts, then permits, then id
+  rolls.sort((a,b)=> b.r.nConflicts-a.r.nConflicts || b.r.nPermits-a.r.nPermits || a.p.id.localeCompare(b.p.id));
+
+  const tiles=`<div class="tiles">
+    <div class="tile"><div class="n">${podList.length}</div><div class="l">PODs</div></div>
+    <div class="tile"><div class="n">${DATA.assets.filter(a=>a.type==='ring').length}</div><div class="l">MV rings</div></div>
+    <div class="tile ok"><div class="n">${nEn}</div><div class="l">Energised</div></div>
+    <div class="tile"><div class="n" style="color:var(--amber)">${nMix}</div><div class="l">Mixed</div></div>
+    <div class="tile"><div class="n" style="color:var(--grey)">${nDe}</div><div class="l">De-energised</div></div>
+    <div class="tile"><div class="n" style="color:#f3b56b">${totPerm}</div><div class="l">Permits on board</div></div>
+    <div class="tile ${totConf?'warn':'ok'}"><div class="n">${totConf}</div><div class="l">Open conflicts</div></div>
+  </div>`;
+
+  const rows=rolls.map(({p,r})=>{
+    const ring=byId[p.parent];
+    return `<tr class="${r.nConflicts?'conflict-row':''}" onclick="gotoPod('${p.id}')">
+      <td><span class="mono">${p.id}</span></td>
+      <td>${p.label||p.name}</td>
+      <td>${ring?ring.name:""}</td>
+      <td><span class="cell-dot" style="background:${energColor(r.state)}"></span>${r.label}</td>
+      <td>${badge(r.nPermits,'p')}</td>
+      <td>${badge(r.nConflicts,'c')}</td>
+    </tr>`;
+  }).join("");
+
+  el.innerHTML = `
+    <div class="view-pad-h">Site overview</div>
+    <div class="view-pad-sub">Live energisation and permit state across all ${podList.length} PODs. Rows with open conflicts are flagged and sorted to the top. Click any POD to open its single line in the SLD view.</div>
+    ${tiles}
+    <div class="sect-h">PODs <span class="muted" style="font-weight:400;font-size:11px">(${podList.length})</span></div>
+    <div class="tbl-wrap"><table class="data">
+      <thead><tr><th>POD</th><th>Plant ref</th><th>MV ring</th><th>Energisation</th><th>Permits</th><th>Conflicts</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>`;
+}
+
+/* ---------- ACTIVE PERMITS (with conflicts) ---------- */
+function renderPermits(){
+  const el=document.getElementById("view-permits");
+  const confByPermit={};
+  DATA.conflicts.forEach(c=>c.permits.forEach(id=>(confByPermit[id]??=[]).push(c)));
+  const inConflict = id => !!confByPermit[id];
+
+  const statusOrder={active:0,suspended:1,issued:2};
+  const perms=[...DATA.permits].sort((a,b)=>{
+    const ca=inConflict(a.id)?0:1, cb=inConflict(b.id)?0:1;
+    if(ca!==cb) return ca-cb;
+    const sa=statusOrder[a.status]??9, sb=statusOrder[b.status]??9;
+    if(sa!==sb) return sa-sb;
+    return a.id.localeCompare(b.id);
+  });
+
+  const banner = DATA.conflicts.length
+    ? `<div class="banner danger">&#9888; ${DATA.conflicts.length} active conflict${DATA.conflicts.length>1?'s':''}: permits below are on assets that remain electrically coupled through closed switches. Resolve before authorising concurrent work.</div>`
+    : `<div class="banner clear">&#10003; No conflicts. No two live permits sit on assets coupled through closed switches.</div>`;
+
+  const rows=perms.map(p=>{
+    const a=byId[p.asset]; const pod=a?byId[a.pod]:null;
+    const confs=confByPermit[p.id]||[];
+    let confCell=`<span class="muted">&ndash;</span>`;
+    if (confs.length){
+      const others=new Set();
+      confs.forEach(c=>c.permits.forEach(id=>{ if(id!==p.id) others.add(id); }));
+      confCell=`<span class="count-badge c">${confs.length}</span> <span class="conf-with">with ${[...others].join(", ")}</span>`;
+    }
+    return `<tr class="${confs.length?'conflict-row':''}" onclick="gotoAsset('${p.asset}')">
+      <td><span class="mono">${p.id}</span></td>
+      <td>${p.title}</td>
+      <td>${a?a.name:p.asset}<br><span class="muted mono" style="font-size:10.5px">${p.asset}</span></td>
+      <td>${pod?(pod.label||pod.name):(a?a.pod:"")}</td>
+      <td>${p.contractor||""}</td>
+      <td><span class="muted" style="font-size:11px">${p.from}<br>to ${p.to}</span></td>
+      <td><span class="pill ${p.status}">${p.status}</span></td>
+      <td>${confCell}</td>
+    </tr>`;
+  }).join("") || `<tr><td colspan="8" class="muted" style="padding:18px">No active permits.</td></tr>`;
+
+  const confCards = DATA.conflicts.length ? `
+    <div class="sect-h">Conflict detail <span class="count-badge c">${DATA.conflicts.length}</span></div>
+    <div class="conf-grid">${DATA.conflicts.map(c=>{
+      const names=c.assets.map(a=>byId[a]?byId[a].name:a).join("  +  ");
+      const pms=c.permits.map(id=>{ const p=DATA.permits.find(x=>x.id===id);
+        return `<div class="pmrow"><span class="mono">${id}</span>${p?` &middot; ${p.title} <span class="muted">(${p.status})</span>`:""}</div>`; }).join("");
+      return `<div class="conf-big"><span class="sev">${(c.severity||'').toUpperCase()}</span>
+        <div class="pair">${names}</div><div class="rs">${c.reason}</div>${pms}</div>`;
+    }).join("")}</div>` : "";
+
+  el.innerHTML = `
+    <div class="view-pad-h">Active permits</div>
+    <div class="view-pad-sub">Every live permit on the board (active, issued, suspended). Conflicting permits are flagged and sorted to the top. Click a row to open the affected asset in the SLD view.</div>
+    ${banner}
+    <div class="tbl-wrap"><table class="data">
+      <thead><tr><th>Permit</th><th>Work</th><th>Asset</th><th>POD</th><th>Contractor</th><th>Window</th><th>Status</th><th>Conflict</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>
+    ${confCards}`;
+}
+
+/* GO LIVE: serve over http and uncomment to read the poller output.
+fetch('snapshot.json').then(r=>r.ok?r.json():null).then(d=>{ if(d){ DATA=d; reindex(); computeFlags(); updateTabBadges(); switchView(currentView); }});
+*/
+
+updateTabBadges();
+switchView("overview");
+</script>
+</body>
+</html>
