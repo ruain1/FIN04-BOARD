@@ -23,6 +23,7 @@ WHAT NEEDS VERIFICATION AGAINST THE DRAWINGS (do not trust blindly):
 """
 
 import json
+import os
 import datetime as dt
 
 # Parsed downstream schedules (FIN3005 61001/61002/61003). Optional: the
@@ -94,8 +95,8 @@ POD_NODES = [
     ("BW002",    "Gray-space busway",  "busway",      None,    400, 392),
     ("CHLR",     "Chiller",            "cooling",     None,    620, 392),
     ("CHWP",     "Chiller water pump", "cooling",     None,    820, 392),
-    ("DB003",    "NB DB",              "board",       None,    170, 512),
-    ("DB002",    "SB DB",              "board",       None,    400, 512),
+    ("DB003",    "NB DB",              "board",       "board",    170, 512),
+    ("DB002",    "SB DB",              "board",       "board",    400, 512),
     ("BLDG-SB",  "Mechanical NB-DB",   "board",       None,    620, 512),
     ("BLDG-NB",  "Building NB DB",     "board",       None,    820, 512),
     # CRAHs: 2 Daikin units per POD, no-break fed off DB003 (=462.110) via
@@ -114,11 +115,11 @@ POD_DEVICE = {
 }
 # supply note per POD node (metadata for the detail panel)
 POD_FED = {
-    "CHLR": "XQ101 (CB007), 3P 800A NS800L, off LV main board short-break bus =432.100",
-    "CHWP": "XQ204 (CB018), 4P 250A NSX250L, off LV main board no-break bus =462.100",
+    "CHLR": "XQ101 / CB007 (3P 800A NS800L) on the short-break section. Spare on EPOD01, 09, 24, 32.",
+    "CHWP": "XQ204 / CB018 (4P 250A NSX250L) on the no-break section. Spare on EPOD01, 09, 24, 32.",
 }
 POD_NOTE = {
-    "CHWP": "On the no-break (UPS) bus so chilled-water circulation rides through a supply interruption. Distinct from the landlord/yard pumps.",
+    "CHWP": "No-break supply so chilled-water circulation rides through a short supply interruption.",
 }
 POD_EDGES = [
     ("RMU001",   "MV-TX001", "feed",        "closed"),
@@ -142,31 +143,61 @@ POD_EDGES = [
 # field is a load CATEGORY, so the board view can group ways into tiles instead
 # of a flat card wall (the agreed "drill one category at a time" rule).
 #   (ref, fn-tag, rating, function, category)
-BREAKER_SCHEDULE = [
-    ("XQ001", "=431.100", "4P 4000A MTZ2 40H2 ML6.0X",  "Transformer incomer (Castell)",       "Incomer"),
-    ("XQ002", "=431.100", "4P 4000A MTZ2 40H2 ML5.0X",  "Generator / 2nd incomer",             "Incomer"),
-    ("XQ010", "=432.100", "3P 3200A MTZ2 32H2 ML5.0X",  "UPS input",                           "UPS"),
-    ("XQ003", "=432.100", "4P 3200A MTZ2 32H2 ML5.0X",  "UPS bypass (Castell, non-auto)",      "UPS"),
-    ("XQ011", "=462.100", "4P 3200A MTZ2 32H2 ML5.0X",  "UPS output (to no-break bus)",        "UPS"),
-    ("XQ101", "=432.100", "3P 800A NS800L ML5.0E",      "Chiller supply (chiller plant)",      "Cooling"),
-    ("XQ102", "=432.100", "3P 800A NS800L ML5.0E",      "Spare (equipped)",                    "Spare"),
-    ("XQ105", "=432.100", "4P 400A NSX400L ML5.3E",     "Temporary chiller feed",              "Cooling"),
-    ("XQ202", "=462.100", "4P 2500A MTZ2 25H2 ML5.0X",  "Whitespace busway (IT load)",         "Whitespace"),
-    ("XQ004", "=432.100", "4P 250A NSX250L ML5.2E",     "SB distribution board (=433.160)",    "Distribution"),
-    ("XQ201", "=462.100", "4P 250A NSX250L ML5.2E",     "No-break feeder",                     "Distribution"),
-    ("XQ203", "=462.100", "4P 250A NSX250L ML7.2E",     "No-break DB (=462.110, CRAHs)",       "Distribution"),
-    ("XQ204", "=462.100", "4P 250A NSX250L ML7.2E",     "Chiller water pump (no-break)",       "Cooling"),
-    ("XQ205", "=462.100", "4P 160A NSX160L ML7.2E",     "Local POD distribution (=462.110)",   "Distribution"),
-    ("XQ106", "=432.100", "4P 160A NSX160L ML7.2E",     "Gen set aux supply",                  "ATS/Genset"),
-    ("XQ107", "=432.100", "4P 160A NSX160L ML7.2E",     "POD local distribution board (ATS)",  "ATS/Genset"),
-    ("XQ108", "=432.100", "4P 160A NSX160L ML7.2E",     "ATS supply",                          "ATS/Genset"),
-    ("XS109", "=432.100", "4P 160A ATS TA16D4",         "Automatic transfer switch",           "ATS/Genset"),
-    ("XQ005", "=432.100", "4P 25A NG125L",              "Secondary supply to ATS",             "ATS/Genset"),
-    ("XQ103", "=432.100", "4P 160A NSX160L",            "Spare",                               "Spare"),
-    ("XQ104", "=432.100", "4P 160A NSX160L",            "Spare",                               "Spare"),
-    ("XQE004","=432.100", "PRD1 25r Type 1",            "Surge arrester",                      "Surge"),
-    ("XQE201","=462.100", "PRD1 25r Type 1",            "Surge arrester (no-break)",           "Surge"),
+# Breaker schedules per board, read off 61100. All ways are physically on the main
+# switchboard (tagged ...DB001.CBnnn), grouped on the sheet into the main/UPS section,
+# the SB BREAKERS group (feeds the short-break board DB002) and the NB BREAKERS group
+# (feeds the no-break board DB003).
+#   (ref, CB, rating, function, category)
+SCHEDULE_MAIN = [
+    ("XQ001", "CB001", "4P 4000A MTZ2 40H2 ML6.0H",    "Incomer from transformer",    "Incomer"),
+    ("XQ002", "CB002", "4P 4000A MTZ2 40H2 ML5.0X",    "Incomer from generator",      "Incomer"),
+    ("XQ010", "CB005", "4P 3200A MTZ2 32H2 ML5.0X",    "UPS input",                   "UPS"),
+    ("XQ003", "CB003", "4P 3200A MTZ2 32H2 ML5.0X",    "UPS bypass",                  "UPS"),
+    ("XQ011", "CB006", "4P 3200A MTZ2 32H2 (non-auto)","UPS output to no-break bus",  "UPS"),
+    ("XQ004", "CB004", "4P 250A NSX250L ML5.2E",       "Feeder",                      "Distribution"),
+    ("XQE004","SPD001","Type 1 SPD",                   "Surge arrester",              "Surge"),
 ]
+SCHEDULE_SB = [
+    # ref,    CB,      rating,                          default function,                         category
+    ("XQ101", "CB007", "3P 800A NS800L ML5.0E Ir720A",  "Chiller",                                "Cooling"),
+    ("XQ102", "CB008", "3P 800A NS800L ML5.0E Ir720A",  "Spare",                                  "Spare"),
+    ("XQ103", "CB009", "4P 160A NSX160L ML7.2E",        "Genset auxiliary supply (GENDB001)",     "Genset"),
+    ("XQ104", "CB010", "4P 160A NSX160L ML7.2E",        "Building SB DB",                         "Distribution"),
+    ("XQ105", "CB011", "4P 400A NSX400L ML5.3E",        "Spare",                                  "Spare"),
+    ("XQ106", "CB012", "4P 160A NSX160L ML7.2E",        "Spare",                                  "Spare"),
+    ("XQ107", "CB013", "4P 160A NSX160L ML7.2E",        "LSBDB (Local SB Distribution Board)",    "Distribution"),
+    ("XQ108", "CB014", "4P 160A NSX160L ML7.2E Ir125A", "Local POD short-break DB (DB002)",       "Distribution"),
+    ("XS109", "ATS001","4P 160A ATS TA16D4S1604TPE",    "Automatic transfer switch",              "ATS"),
+]
+SCHEDULE_NB = [
+    ("XQ201", "CB015", "4P 250A NSX250L ML5.2E",        "PE busbar (with SPD003)",                "Protective earth"),
+    ("XQ202", "CB016", "4P 2500A MTZ2 25H2 ML5.0X",     "Gray space busway (whitespace IT)",      "Whitespace"),
+    ("XQ203", "CB017", "4P 250A NSX250L ML7.2E",        "Building NB DB",                         "Distribution"),
+    ("XQ204", "CB018", "4P 250A NSX250L ML7.2E",        "Chiller water pump",                     "Cooling"),
+    ("XQ205", "CB019", "4P 160A NSX160L ML7.2E",        "Local POD no-break DB (DB003)",          "Distribution"),
+    ("XQE201","SPD003","Type 1 SPD",                    "Surge arrester (no-break)",              "Surge"),
+]
+SCHEDULES = {"DB001": SCHEDULE_MAIN, "DB002": SCHEDULE_SB, "DB003": SCHEDULE_NB}
+
+# Per-POD function overrides for the ways that vary POD to POD (chiller, chiller
+# water pump, SB/NB building DBs, LSBDB, gray-space busway), read off every page of
+# 61100. Four PODs (01, 09, 24, 32) carry spares where the rest carry chiller/pump.
+try:
+    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "pod_fn.json")) as _f:
+        POD_FN = json.load(_f)
+except Exception:
+    POD_FN = {}
+
+def categorize(fn):
+    s = fn.lower()
+    if "chiller water pump" in s or "chiller" in s: return "Cooling"
+    if s == "spare":                                return "Spare"
+    if "busway" in s:                               return "Whitespace"
+    if "genset" in s:                               return "Genset"
+    if "pe busbar" in s:                            return "Protective earth"
+    if "surge" in s:                                return "Surge"
+    if "transfer switch" in s:                      return "ATS"
+    return "Distribution"
 
 # ----------------------------------------------------------------------------
 # layout coordinates
@@ -260,19 +291,23 @@ def pod_layout(pod):
     return nodes, edges
 
 
-def board_layout(pod):
-    """DB001 breaker schedule for one POD, grid-laid."""
+def board_layout(pod, board_suffix):
+    """Breaker schedule for one board: DB001 (main/UPS), DB002 (SB), DB003 (NB)."""
     nodes, edges = [], []
-    board = f"{pod}.DB001"
+    board = f"{pod}.{board_suffix}"
+    schedule = SCHEDULES[board_suffix]
     cols = 4
     x0, y0, dx, dy = 170, 130, 230, 96
-    for i, (ref, fn_tag, rating, fn, cat) in enumerate(BREAKER_SCHEDULE):
+    for i, (ref, cb, rating, fn, cat) in enumerate(schedule):
         r, c = divmod(i, cols)
+        ov = POD_FN.get(pod, {}).get(ref)        # per-POD load label off 61100
+        if ov:
+            fn, cat = ov, categorize(ov)
         nodes.append(dict(id=f"{board}.{ref}", name=ref, type="breaker",
                           parent=board, tier="board", childLayout=None,
                           x=x0 + c * dx, y=y0 + r * dy, pod=pod,
-                          ref=ref, xq=fn_tag, rating=rating, fn=fn, cat=cat,
-                          tag=f"FIN04.01.L0.{pod}.DB001.{ref}"))
+                          ref=ref, cb=cb, rating=rating, fn=fn, cat=cat,
+                          tag=f"FIN04.01.L0.{pod}.DB001.{cb}"))
         edges.append(dict(**{"from": board, "to": f"{board}.{ref}",
                             "type": "feed", "state": "closed"}))
     return nodes, edges
@@ -311,7 +346,8 @@ def build():
         n, e = ring_layout(ring); assets += n; edges += e
     for pod in POD_LABEL:
         n, e = pod_layout(pod); assets += n; edges += e
-        n, e = board_layout(pod); assets += n; edges += e
+        for bsuf in ("DB001", "DB002", "DB003"):
+            n, e = board_layout(pod, bsuf); assets += n; edges += e
     n, e = landlord_layout(); assets += n; edges += e
 
     # ---- attach downstream load schedules (FIN3005 61001/61002/61003) --------

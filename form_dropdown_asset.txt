@@ -1,0 +1,14 @@
+RMU 22 kV
+TX 2.5 MVA
+Standby genset
+LV main board
+UPS 1.7 MVA
+Gray-space busway
+Chiller
+Chiller water pump
+NB DB
+SB DB
+Hall SB DB
+Hall NB DB (FCUs)
+CRAH 1
+CRAH 2

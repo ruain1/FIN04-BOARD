@@ -1,0 +1,258 @@
+{
+"EPOD01": {
+"XQ101": "Spare",
+"XQ104": "Building SB DB 1.1",
+"XQ107": "LSBDB 1.1 (Local SB Distribution Board)",
+"XQ202": "Gray space busway 1.1 (whitespace IT)",
+"XQ203": "Building NB DB 1.1",
+"XQ204": "Spare"
+},
+"EPOD02": {
+"XQ101": "Chiller 2.1",
+"XQ104": "Spare",
+"XQ107": "LSBDB 2.1 (Local SB Distribution Board)",
+"XQ202": "Gray space busway 2.1 (whitespace IT)",
+"XQ203": "Building NB DB 2.1",
+"XQ204": "Chiller Water Pump 2.1"
+},
+"EPOD03": {
+"XQ101": "Chiller 3.1",
+"XQ104": "Building SB DB 3.1",
+"XQ107": "LSBDB 3.1 (Local SB Distribution Board)",
+"XQ202": "Gray space busway 3.1 (whitespace IT)",
+"XQ203": "Building NB DB 3.1",
+"XQ204": "Chiller Water Pump 3.1"
+},
+"EPOD04": {
+"XQ101": "Chiller 4.1",
+"XQ104": "Spare",
+"XQ107": "LSBDB 4.1 (Local SB Distribution Board)",
+"XQ202": "Gray space busway 4.1 (whitespace IT)",
+"XQ203": "Building NB DB 4.1",
+"XQ204": "Chiller Water Pump 4.1"
+},
+"EPOD05": {
+"XQ101": "Chiller 5.1",
+"XQ104": "Building SB DB 5.1",
+"XQ107": "LSBDB 5.1 (Local SB Distribution Board)",
+"XQ202": "Gray space busway 5.1 (whitespace IT)",
+"XQ203": "Building NB DB 5.1",
+"XQ204": "Chiller Water Pump 5.1"
+},
+"EPOD06": {
+"XQ101": "Chiller 6.1",
+"XQ104": "Spare",
+"XQ107": "LSBDB 6.1 (Local SB Distribution Board)",
+"XQ202": "Gray space busway 6.1 (whitespace IT)",
+"XQ203": "Building NB DB 6.1",
+"XQ204": "Chiller Water Pump 6.1"
+},
+"EPOD07": {
+"XQ101": "Chiller 7.1",
+"XQ104": "Building SB DB 7.1",
+"XQ107": "LSBDB 7.1 (Local SB Distribution Board)",
+"XQ202": "Gray space busway 7.1 (whitespace IT)",
+"XQ203": "Building NB DB 7.1",
+"XQ204": "Chiller Water Pump 7.1"
+},
+"EPOD08": {
+"XQ101": "Chiller 8.1",
+"XQ104": "Spare",
+"XQ107": "LSBDB 8.1 (Local SB Distribution Board)",
+"XQ202": "Gray space busway 8.1 (whitespace IT)",
+"XQ203": "Building NB DB 8.1",
+"XQ204": "Chiller Water Pump 8.1"
+},
+"EPOD09": {
+"XQ101": "Spare",
+"XQ104": "Spare",
+"XQ107": "LSBDB 9.1 (Local SB Distribution Board)",
+"XQ202": "Gray space busway 9.1 (whitespace IT)",
+"XQ203": "Building NB DB 9.1",
+"XQ204": "Spare"
+},
+"EPOD10": {
+"XQ101": "Chiller 10.1",
+"XQ104": "Building SB DB 10.1",
+"XQ107": "LSBDB 10.1 (Local SB Distribution Board)",
+"XQ202": "Gray space busway 10.1 (whitespace IT)",
+"XQ203": "Building NB DB 10.1",
+"XQ204": "Chiller Water Pump 10.1"
+},
+"EPOD11": {
+"XQ101": "Chiller 11.1",
+"XQ104": "Spare",
+"XQ107": "LSBDB 11.1 (Local SB Distribution Board)",
+"XQ202": "Gray space busway 11.1 (whitespace IT)",
+"XQ203": "Building NB DB 11.1",
+"XQ204": "Chiller Water Pump 11.1"
+},
+"EPOD12": {
+"XQ101": "Chiller 12.1",
+"XQ104": "Building SB DB 12.1",
+"XQ107": "LSBDB 12.1 (Local SB Distribution Board)",
+"XQ202": "Gray space busway 12.1 (whitespace IT)",
+"XQ203": "Building NB DB 12.1",
+"XQ204": "Chiller Water Pump 12.1"
+},
+"EPOD13": {
+"XQ101": "Chiller 13.1",
+"XQ104": "Spare",
+"XQ107": "LSBDB 13.1 (Local SB Distribution Board)",
+"XQ202": "Gray space busway 13.1 (whitespace IT)",
+"XQ203": "Building NB DB 13.1",
+"XQ204": "Chiller Water Pump 13.1"
+},
+"EPOD14": {
+"XQ101": "Chiller 14.1",
+"XQ104": "Building SB DB 14.1",
+"XQ107": "LSBDB 14.1 (Local SB Distribution Board)",
+"XQ202": "Gray space busway 14.1 (whitespace IT)",
+"XQ203": "Building NB DB 14.1",
+"XQ204": "Chiller Water Pump 14.1"
+},
+"EPOD15": {
+"XQ101": "Chiller 15.1",
+"XQ104": "Spare",
+"XQ107": "LSBDB 15.1 (Local SB Distribution Board)",
+"XQ202": "Gray space busway 15.1 (whitespace IT)",
+"XQ203": "Building NB DB 15.1",
+"XQ204": "Chiller Water Pump 15.1"
+},
+"EPOD16": {
+"XQ101": "Chiller 16.1",
+"XQ104": "Building SB DB 16.1",
+"XQ107": "LSBDB 16.1 (Local SB Distribution Board)",
+"XQ202": "Gray space busway 16.1 (whitespace IT)",
+"XQ203": "Building NB DB 16.1",
+"XQ204": "Chiller Water Pump 16.1"
+},
+"EPOD17": {
+"XQ101": "Chiller 8.2",
+"XQ104": "Spare",
+"XQ107": "LSBDB 8.2 (Local SB Distribution Board)",
+"XQ202": "Gray space busway 8.2 (whitespace IT)",
+"XQ203": "Building NB DB 8.2",
+"XQ204": "Chiller Water Pump 8.2"
+},
+"EPOD18": {
+"XQ101": "Chiller 7.2",
+"XQ104": "Building SB DB 7.2",
+"XQ107": "LSBDB 7.2 (Local SB Distribution Board)",
+"XQ202": "Gray space busway 7.2 (whitespace IT)",
+"XQ203": "Building NB DB 7.2",
+"XQ204": "Chiller Water Pump 7.2"
+},
+"EPOD19": {
+"XQ101": "Chiller 6.2",
+"XQ104": "Spare",
+"XQ107": "LSBDB 6.2 (Local SB Distribution Board)",
+"XQ202": "Gray space busway 6.2 (whitespace IT)",
+"XQ203": "Building NB DB 6.2",
+"XQ204": "Chiller Water Pump 6.2"
+},
+"EPOD20": {
+"XQ101": "Chiller 5.2",
+"XQ104": "Building SB DB 5.2",
+"XQ107": "LSBDB 5.2 (Local SB Distribution Board)",
+"XQ202": "Gray space busway 5.2 (whitespace IT)",
+"XQ203": "Building NB DB 5.2",
+"XQ204": "Chiller Water Pump 5.2"
+},
+"EPOD21": {
+"XQ101": "Chiller 4.2",
+"XQ104": "Spare",
+"XQ107": "LSBDB 4.2 (Local SB Distribution Board)",
+"XQ202": "Gray space busway 4.2 (whitespace IT)",
+"XQ203": "Building NB DB 4.2",
+"XQ204": "Chiller Water Pump 4.2"
+},
+"EPOD22": {
+"XQ101": "Chiller 3.2",
+"XQ104": "Building SB DB 3.2",
+"XQ107": "LSBDB 3.2 (Local SB Distribution Board)",
+"XQ202": "Gray space busway 3.2 (whitespace IT)",
+"XQ203": "Building NB DB 3.2",
+"XQ204": "Chiller Water Pump 3.2"
+},
+"EPOD23": {
+"XQ101": "Chiller 2.2",
+"XQ104": "Spare",
+"XQ107": "LSBDB 2.2 (Local SB Distribution Board)",
+"XQ202": "Gray space busway 2.2 (whitespace IT)",
+"XQ203": "Building NB DB 2.2",
+"XQ204": "Chiller Water Pump 2.2"
+},
+"EPOD24": {
+"XQ101": "Spare",
+"XQ104": "Building SB DB 1.2",
+"XQ107": "LSBDB 1.2 (Local SB Distribution Board)",
+"XQ202": "Gray space busway 1.2 (whitespace IT)",
+"XQ203": "Building NB DB 1.2",
+"XQ204": "Spare"
+},
+"EPOD25": {
+"XQ101": "Chiller 16.2",
+"XQ104": "Building SB DB 16.2",
+"XQ107": "LSBDB 16.2 (Local SB Distribution Board)",
+"XQ202": "Gray space busway 16.2 (whitespace IT)",
+"XQ203": "Building NB DB 16.2",
+"XQ204": "Chiller Water Pump 16.2"
+},
+"EPOD26": {
+"XQ101": "Chiller 15.2",
+"XQ104": "Spare",
+"XQ107": "LSBDB 15.2 (Local SB Distribution Board)",
+"XQ202": "Gray space busway 15.2 (whitespace IT)",
+"XQ203": "Building NB DB 15.2",
+"XQ204": "Chiller Water Pump 15.2"
+},
+"EPOD27": {
+"XQ101": "Chiller 14.2",
+"XQ104": "Building SB DB 14.2",
+"XQ107": "LSBDB 14.2 (Local SB Distribution Board)",
+"XQ202": "Gray space busway 14.2 (whitespace IT)",
+"XQ203": "Building NB DB 14.2",
+"XQ204": "Chiller Water Pump 14.2"
+},
+"EPOD28": {
+"XQ101": "Chiller 13.2",
+"XQ104": "Spare",
+"XQ107": "LSBDB 13.2 (Local SB Distribution Board)",
+"XQ202": "Gray space busway 13.2 (whitespace IT)",
+"XQ203": "Building NB DB 13.2",
+"XQ204": "Chiller Water Pump 13.2"
+},
+"EPOD29": {
+"XQ101": "Chiller 12.2",
+"XQ104": "Building SB DB 12.2",
+"XQ107": "LSBDB 12.2 (Local SB Distribution Board)",
+"XQ202": "Gray space busway 12.2 (whitespace IT)",
+"XQ203": "Building NB DB 12.2",
+"XQ204": "Chiller Water Pump 12.2"
+},
+"EPOD30": {
+"XQ101": "Chiller 11.2",
+"XQ104": "Spare",
+"XQ107": "LSBDB 11.2 (Local SB Distribution Board)",
+"XQ202": "Gray space busway 11.2 (whitespace IT)",
+"XQ203": "Building NB DB 11.2",
+"XQ204": "Chiller Water Pump 11.2"
+},
+"EPOD31": {
+"XQ101": "Chiller 10.2",
+"XQ104": "Building SB DB 10.2",
+"XQ107": "LSBDB 10.2 (Local SB Distribution Board)",
+"XQ202": "Gray space busway 10.2 (whitespace IT)",
+"XQ203": "Building NB DB 10.2",
+"XQ204": "Chiller Water Pump 10.2"
+},
+"EPOD32": {
+"XQ101": "Spare",
+"XQ104": "Spare",
+"XQ107": "LSBDB 9.2 (Local SB Distribution Board)",
+"XQ202": "Gray space busway 9.2 (whitespace IT)",
+"XQ203": "Building NB DB 9.2",
+"XQ204": "Spare"
+}
+}

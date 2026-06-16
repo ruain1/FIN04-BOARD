@@ -355,8 +355,8 @@ function renderGeneric(parentId, incomer){
   const idset=new Set(nodes.map(n=>n.id));
   // edges among visible
   visibleEdges(idset).forEach(e=>{
-    const a=byId[e.from]||(incomer&&incomer.id===e.from?incomer:null);
-    const b=byId[e.to]  ||(incomer&&incomer.id===e.to?incomer:null);
+    const a=(incomer&&incomer.id===e.from)?incomer:byId[e.from];
+    const b=(incomer&&incomer.id===e.to)  ?incomer:byId[e.to];
     if(!a||!b) return;
     const dashed=(e.type!=="feed")||e.state!=="closed";
     const col=e.type==="feed"?"var(--line)":"var(--faint)";
