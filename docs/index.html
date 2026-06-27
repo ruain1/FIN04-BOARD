@@ -1477,18 +1477,26 @@ function renderPermits(){
     ${confCards}`;
 }
 
-/* GO LIVE: serve over http and uncomment to read the poller output.
-fetch('snapshot.json').then(r=>r.ok?r.json():null).then(d=>{ if(d){ DATA=d; reindex(); computeFlags(); updateTabBadges(); switchView(currentView); }});
-fetch('permissions_config.json').then(r=>r.ok?r.json():null).then(c=>{
-  if(c && c.roles){ PERMS={default_role:c.default_role||"viewer", roles:c.roles, admin_unlock:c.admin_unlock||DEFAULT_PERMS.admin_unlock}; currentRole=PERMS.default_role; }
-  applyRoleUI();
-}).catch(()=>applyRoleUI());
-applyRoleUI();
-initAuth();
-*/
-
 updateTabBadges();
 switchView("overview");
+
+/* startup: role UI, auth gate, then live overlays (all run on https GitHub Pages) */
+applyRoleUI();
+initAuth();
+
+fetch('permissions_config.json').then(r=>r.ok?r.json():null).then(c=>{
+  if(c && c.roles){ PERMS={default_role:c.default_role||"viewer", roles:c.roles, admin_unlock:c.admin_unlock||DEFAULT_PERMS.admin_unlock}; if(!currentUser) currentRole=PERMS.default_role; }
+  applyRoleUI();
+}).catch(()=>{});
+
+fetch('snapshot.json',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(d=>{
+  if(d && d.assets){
+    const emap={}; d.assets.forEach(a=>{ if(a.energisation) emap[a.id]=a.energisation; });
+    DATA = applyOverlay(structuredClone(TOPOLOGY), {energisation:emap, permits:d.permits||DATA.permits, conflicts:d.conflicts||DATA.conflicts});
+    if(d.meta && d.meta.generated) DATA.meta.generated=d.meta.generated;
+    reindex(); computeFlags(); updateTabBadges(); switchView(currentView);
+  }
+}).catch(()=>{});
 </script>
 </body>
 </html>
