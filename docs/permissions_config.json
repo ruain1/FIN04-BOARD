@@ -1,0 +1,40 @@
+{
+  "schema": "fin04.permissions/1",
+  "generated": "2026-06-27",
+  "description": "Role and permission config for the FIN04 board. Everyone starts as the default role. Admin is unlocked by passcode and gains import and manual per-asset energisation editing. NOTE: this is a client-side deterrent on a static site, not enforced security. For real enforcement put the board behind SSO/an auth proxy or a backend that serves data by authenticated role.",
+  "default_role": "viewer",
+  "roles": {
+    "viewer": {
+      "label": "Viewer",
+      "permissions": [
+        "view",
+        "sync",
+        "export"
+      ]
+    },
+    "admin": {
+      "label": "Administrator",
+      "permissions": [
+        "view",
+        "sync",
+        "export",
+        "import",
+        "edit_energisation",
+        "config"
+      ]
+    }
+  },
+  "permissions": {
+    "view": "See the board and drill into every tier",
+    "sync": "Fetch the latest snapshot.json",
+    "export": "Download snapshot.json and the per-asset config",
+    "import": "Paste/upload energisation and apply it",
+    "edit_energisation": "Manually set energisation status on a selected asset",
+    "config": "Reserved for future settings"
+  },
+  "admin_unlock": {
+    "method": "passcode",
+    "passcode_sha256": "33961497d13693c9edfecbf7ac458b814ce51a3151e8adf58f9a1f4b451756d0",
+    "note": "SHA-256 of the admin passcode. To change it: sha256 your new passcode and replace this value. Default passcode is 'FIN04-admin'. Change it before go-live."
+  }
+}

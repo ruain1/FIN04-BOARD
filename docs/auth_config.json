@@ -1,0 +1,9 @@
+{
+  "backend": "local",
+  "_comment": "Set backend to 'supabase' and fill url + anonKey for real multi-user auth, approvals and presence. Leave as 'local' for the per-browser demo.",
+  "supabase": {
+    "url": "",
+    "anonKey": "",
+    "lib": "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm"
+  }
+}
