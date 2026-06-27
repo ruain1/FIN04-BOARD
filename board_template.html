@@ -11,7 +11,7 @@
     --bg:#0e1722; --panel:#17222e; --panel2:#1d2b39; --line:#36495a; --line2:#283845;
     --ink:#e6edf3; --muted:#93a4b3; --faint:#5c6f7e; --sym:#aeb8c2;
     --green:#2fb574; --grey:#6e7e8d; --amber:#e2a72e; --unknown:#34424f;
-    --live:#e24b4a; --dead:#2fb574; --cond:#e2a72e;
+    --live:#e24b4a; --dead:#2fb574; --cond:#e0902e;
     --permit:#3e7cc2; --conflict:#cf3fb0; --link:#5fa8e6;
   }
   *{box-sizing:border-box;}
@@ -30,6 +30,18 @@
   .sync-btn:hover{background:#1f5078;color:#fff;}
   .sync-btn.spin{opacity:.7;cursor:default;}
   .sync-status{font-size:10.5px;min-height:12px;}
+  .imp-btn{font-family:'Archivo',sans-serif;font-size:12px;font-weight:600;color:#dfe7ad;background:#2f3b16;border:1px solid #586b2b;border-radius:7px;padding:6px 14px;cursor:pointer;}
+  .imp-btn:hover{background:#3c4d1d;color:#fff;}
+  .modal-bg{position:fixed;inset:0;background:rgba(4,9,14,.74);display:none;align-items:flex-start;justify-content:center;z-index:60;padding:40px 12px;overflow:auto;}
+  .modal-bg.open{display:flex;}
+  .modal{background:var(--panel);border:1px solid var(--line);border-radius:12px;width:min(700px,94vw);padding:20px 22px;}
+  .modal h2{font-family:'Archivo',sans-serif;font-size:15px;margin:0 0 4px;color:var(--ink);text-transform:none;letter-spacing:0;}
+  .modal p.sub{color:var(--muted);font-size:12px;margin:0 0 14px;line-height:1.5;}
+  .modal textarea{width:100%;height:148px;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:8px;font-family:'IBM Plex Mono',monospace;font-size:12px;padding:10px;resize:vertical;box-sizing:border-box;}
+  .modal .row{display:flex;gap:9px;flex-wrap:wrap;margin-top:13px;align-items:center;}
+  .modal .mini{font-size:11px;color:var(--faint);line-height:1.6;}
+  .imp-result{margin-top:12px;font-size:12.5px;min-height:16px;}
+  .chip{display:inline-block;padding:1px 8px;border-radius:10px;font-size:11px;font-weight:700;margin-right:6px;color:#0e1722;}
   main{display:flex;flex:1;min-height:0;}
 
   /* left: logical tree */
@@ -167,10 +179,31 @@
   </nav>
   <div class="hdr-right">
     <button class="sync-btn" id="syncBtn" onclick="syncNow()" title="Fetch the latest snapshot">&#8635;&nbsp;Sync</button>
+    <button class="imp-btn" id="impBtn" onclick="openImport()" title="Import energisation status per asset">&#8681;&nbsp;Import energisation</button>
     <div class="meta" id="meta"></div>
     <div class="sync-status muted" id="syncStatus"></div>
   </div>
 </header>
+<div class="modal-bg" id="impModal">
+  <div class="modal">
+    <h2>Import energisation status</h2>
+    <p class="sub">Paste or upload live energisation per asset. Energisation is the authoritative layer and is separate from permit status; imported values override the propagation model. The join key is the controlled system ID (the board asset id).</p>
+    <textarea id="impText" placeholder='JSON  {"EPOD01.DB001":"Live","EPOD01.DB003":"Dead"}
+JSON  [{"id":"EPOD01.DB001","status":"Energised"}]
+CSV   EPOD01.DB001,Live'></textarea>
+    <div class="row">
+      <input type="file" id="impFile" accept=".json,.csv,.txt" style="font-size:11px;color:var(--muted)" onchange="loadImpFile(event)">
+    </div>
+    <div class="imp-result" id="impResult"></div>
+    <div class="row">
+      <button class="sync-btn" onclick="applyImport()">Apply to board</button>
+      <button class="imp-btn" onclick="downloadConfigTemplate()">Download per-asset config</button>
+      <button class="imp-btn" onclick="downloadSnapshot()">Export snapshot.json</button>
+      <button class="sync-btn" style="background:#3a2230;border-color:#6b2b3d" onclick="closeImport()">Close</button>
+    </div>
+    <div class="mini" id="impMap" style="margin-top:13px"></div>
+  </div>
+</div>
 <div id="viewport">
 
 <section id="view-overview" class="view"></section>
@@ -268,6 +301,77 @@ async function syncNow(){
   }
 }
 
+/* ---------- energisation import ---------- */
+const STATUS_MAP = {
+  energised:["energised","energized","live","green","on","1","true","y"],
+  deenergised:["de-energised","de-energized","dead","isolated","off","grey","gray","0","false","n"],
+  conditional:["conditional","caution","partial","restricted","amber","yellow"]
+};
+function mapStatus(raw){
+  const v=String(raw).trim().toLowerCase().replace(/^"|"$/g,"");
+  for(const k in STATUS_MAP){ if(STATUS_MAP[k].includes(v)) return k; }
+  return null;
+}
+function openImport(){
+  document.getElementById("impMap").innerHTML =
+    "<b>Status mapping</b><br>" + Object.entries(STATUS_MAP).map(([k,vs])=>
+      `<span class="chip" style="background:${k==='energised'?'var(--live)':k==='deenergised'?'var(--dead)':'var(--cond)'}">${k}</span>${vs.join(", ")}`
+    ).join("<br>") + "<br><br>" + (DATA.assets.filter(a=>a.energisation).length) + " importable assets on this board. Download the per-asset config for the full id list and ACC binding.";
+  document.getElementById("impResult").innerHTML="";
+  document.getElementById("impModal").classList.add("open");
+}
+function closeImport(){ document.getElementById("impModal").classList.remove("open"); }
+function loadImpFile(ev){ const f=ev.target.files[0]; if(!f) return;
+  const r=new FileReader(); r.onload=()=>{ document.getElementById("impText").value=r.result; }; r.readAsText(f); }
+function parseImport(text){
+  text=(text||"").trim(); if(!text) return [];
+  try{ const j=JSON.parse(text);
+    if(Array.isArray(j)) return j.map(o=>[o.id||o.assetId||o.asset, o.status||o.energisation||o.state]);
+    return Object.entries(j);
+  }catch(e){}
+  return text.split(/\r?\n/).map(l=>l.trim()).filter(Boolean)
+    .filter(l=>!/^asset\s*id\s*,/i.test(l))
+    .map(l=>{ const i=l.search(/[,;\t]/); return i<0?[l,""]:[l.slice(0,i).trim(), l.slice(i+1).trim()]; });
+}
+function applyImport(){
+  const rows=parseImport(document.getElementById("impText").value);
+  const valid=new Set(DATA.assets.map(a=>a.id));
+  const emap={}; DATA.assets.forEach(a=>{ if(a.energisation) emap[a.id]=a.energisation; });
+  let applied=0; const badId=[], badStatus=[];
+  rows.forEach(([id,raw])=>{ if(!id) return;
+    if(!valid.has(id)){ badId.push(id); return; }
+    const st=mapStatus(raw); if(!st){ badStatus.push(id+"="+raw); return; }
+    emap[id]=st; applied++;
+  });
+  DATA = applyOverlay(structuredClone(TOPOLOGY), {energisation:emap, permits:DATA.permits||[], conflicts:DATA.conflicts||[]});
+  DATA.meta.generated = new Date().toISOString();
+  reindex(); computeFlags(); updateTabBadges(); switchView(currentView);
+  document.getElementById("impResult").innerHTML =
+    `<b style="color:var(--dead)">${applied} asset${applied===1?'':'s'} updated.</b> `
+    + (badId.length?`<span style="color:var(--cond)">${badId.length} unknown id(s): ${badId.slice(0,6).join(", ")}${badId.length>6?' …':''}. </span>`:"")
+    + (badStatus.length?`<span style="color:var(--cond)">${badStatus.length} unmapped status: ${badStatus.slice(0,4).join(", ")}${badStatus.length>4?' …':''}.</span>`:"")
+    + (!applied&&!badId.length&&!badStatus.length?'<span class="muted">Nothing parsed. Paste JSON or CSV.</span>':"");
+}
+function _dl(text,name,type){ const b=new Blob([text],{type}); const u=URL.createObjectURL(b);
+  const a=document.createElement("a"); a.href=u; a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(u),1500); }
+function downloadSnapshot(){
+  const snap={meta:DATA.meta,
+    assets:DATA.assets.filter(a=>a.energisation).map(a=>({id:a.id, energisation:a.energisation})),
+    permits:DATA.permits||[], conflicts:DATA.conflicts||[]};
+  _dl(JSON.stringify(snap,null,2), "snapshot.json", "application/json");
+}
+function downloadConfigTemplate(){
+  const cfg={ schema:"fin04.energisation-import/1", generated:new Date().toISOString().slice(0,10),
+    project:(DATA.meta&&DATA.meta.project)||"FIN3005 - Koski FIN04",
+    description:"Per-asset binding for importing live energisation status. The importer reads each asset's status from the source and writes the energisation field of snapshot.json.",
+    source:{type:"acc_assets", asset_id_property:"Controlled System ID", status_property:"Energisation Status",
+            join_note:"Controlled System ID from the Electrical Asset Register, matched 1:1 to board asset id."},
+    status_map:STATUS_MAP, default_status:"deenergised",
+    assets: DATA.assets.filter(a=>a.energisation).map(a=>({id:a.id, label:a.name||a.id, source_key:a.id, default:a.energisation})) };
+  _dl(JSON.stringify(cfg,null,2), "energisation_import_config.json", "application/json");
+}
+window.addEventListener("keydown",e=>{ if(e.key==="Escape") closeImport(); });
+
 let currentParent = null;   // null = site overview
 let selectedId = null;
 let expandedCat = null;     // grouped loadboard: which category is expanded
@@ -316,6 +420,11 @@ function txt(x,y,anchor,size,weight,fill,t){
   return `<rect x="${rx}" y="${y-size+1}" width="${w}" height="${h}" rx="2" fill="var(--bg)"/>`
        + `<text x="${x}" y="${y}" text-anchor="${anchor}" font-size="${size}" font-weight="${weight}" fill="${fill}">${t}</text>`;
 }
+function permitPill(cx,cy,id){
+  const w=String(id).length*6.0+16, h=16;
+  return `<rect x="${cx-w/2}" y="${cy-h/2}" width="${w}" height="${h}" rx="8" fill="var(--permit)" stroke="var(--bg)" stroke-width="1.5"/>`
+       + `<text x="${cx}" y="${cy+3.6}" text-anchor="middle" font-size="9.5" font-weight="700" fill="#fff">${id}</text>`;
+}
 function nodeBox(n,opts={}){
   const live=energColor(n.energisation);
   const act=activeFor(n.id), iss=issuedFor(n.id), conf=conflictsFor(n.id).length>0;
@@ -326,9 +435,8 @@ function nodeBox(n,opts={}){
   if (n.type==="bus"){
     const w=opts.w||300,h=6; bx=x-w/2; by=y-h/2; bw=w; bh=h;
     s+=`<rect x="${bx}" y="${by}" width="${w}" height="${h}" rx="2" fill="${live}" stroke="${sel?'#fff':live}" stroke-width="${sel?2:0.5}"/>`;
-    const lr=opts.lblRight, lblX=(lr!=null)?lr-8:bx+2, lblA=(lr!=null)?"end":"start";
-    s+=txt(lblX,by-9,lblA,12.5,700,"var(--ink)",n.name);
-    if (n.childLayout) s+=txt(lblX,by+20,lblA,10,400,"var(--link)","tap to open schedule");
+    s+=txt(bx+6,by-24,"start",12.5,700,"var(--ink)",n.name);
+    if (n.childLayout) s+=txt(bx+6,by-9,"start",9.5,400,"var(--link)","tap to open schedule");
   }
   else if (n.type==="transformer"){
     const r=12;
@@ -356,10 +464,26 @@ function nodeBox(n,opts={}){
     label=n.name; ly=by+bh+16;
   }
   else if (n.type==="board"){
-    const w=82,h=6; bx=x-w/2; by=y-h/2; bw=w; bh=h;
-    s+=`<rect x="${bx}" y="${by}" width="${w}" height="${h}" rx="2" fill="${live}" stroke="${sel?'#fff':live}" stroke-width="${sel?1.5:0.5}"/>`;
-    label=n.name; ly=by+bh+16;
-    if (n.childLayout) s+=txt(x,by+bh+30,"middle",9.5,400,"var(--link)","tap to open");
+    const w=48,h=5; bx=x-w/2; by=y-h/2; bw=w; bh=h;
+    s+=`<rect x="${bx}" y="${by}" width="${w}" height="${h}" fill="${live}" stroke="${sel?'#fff':live}" stroke-width="${sel?1.5:0.6}"/>`;
+    s+=`<line x1="${bx+6}" y1="${by+h}" x2="${bx+6}" y2="${by+h+6}" stroke="${live}" stroke-width="1.6"/>`;
+    s+=`<line x1="${bx+w-6}" y1="${by+h}" x2="${bx+w-6}" y2="${by+h+6}" stroke="${live}" stroke-width="1.6"/>`;
+    label=n.name; ly=by+bh+22;
+    if (n.childLayout) s+=txt(x,by+bh+36,"middle",9.5,400,"var(--link)","tap to open");
+  }
+  else if (n.type==="incomer"){
+    const w=opts.w||196,h=42; bx=x-w/2; by=y-h/2; bw=w; bh=h;
+    s+=`<rect x="${bx}" y="${by}" width="${w}" height="${h}" rx="6" fill="var(--panel2)" stroke="${live}" stroke-width="2.4"/>`;
+    s+=`<path d="M ${bx+12} ${y-5} l 7 -6 l 0 12 l 7 -6 l 7 6" fill="none" stroke="${SYM}" stroke-width="1.7"/>`;
+    const iw=w-44, tl=n.name.length*6.6>iw?` textLength="${iw}" lengthAdjust="spacingAndGlyphs"`:"";
+    s+=`<text x="${x+16}" y="${y+4.5}" text-anchor="middle" font-size="12" font-weight="700" fill="var(--ink)"${tl}>${n.name}</text>`;
+  }
+  else if (n.type==="mvboard"){
+    const w=opts.w||150,h=40; bx=x-w/2; by=y-h/2; bw=w; bh=h;
+    s+=`<rect x="${bx}" y="${by}" width="${w}" height="${h}" rx="4" fill="var(--panel2)" stroke="${live}" stroke-width="2.2"/>`;
+    s+=`<line x1="${bx+8}" y1="${by+13}" x2="${bx+w-8}" y2="${by+13}" stroke="${live}" stroke-width="1.1"/>`;
+    const iw=w-14, tl=n.name.length*6.6>iw?` textLength="${iw}" lengthAdjust="spacingAndGlyphs"`:"";
+    s+=`<text x="${x}" y="${y+8}" text-anchor="middle" font-size="12" font-weight="700" fill="var(--ink)"${tl}>${n.name}</text>`;
   }
   else {
     const w=opts.w||100,h=opts.h||34; bx=x-w/2; by=y-h/2; bw=w; bh=h;
@@ -370,10 +494,10 @@ function nodeBox(n,opts={}){
   if (label!==null){
     s+=txt(lx,ly,lan,11,600,"var(--ink)",label);
   }
-  if (act||iss){
-    const px=bx+bw+16, py=by+bh/2;
-    s+=`<circle cx="${px}" cy="${py}" r="8" fill="var(--permit)" stroke="var(--bg)" stroke-width="1.5"/>`;
-    s+=`<text x="${px}" y="${py+3.2}" text-anchor="middle" font-size="9.5" font-weight="800" fill="#fff">P</text>`;
+  if ((act||iss) && n.type!=="bus"){
+    const pms=permitsFor(n.id), pid=pms.length?pms[0].id:"PTW";
+    const pillY = (label!==null) ? ly+16 : by+bh+18;
+    s+=permitPill(x, pillY, pid);
   }
   if (conf) s+=ringRect(bx-6,by-6,bw+12,bh+12,"var(--conflict)",true);
   else if (act) s+=ringRect(bx-6,by-6,bw+12,bh+12,"var(--permit)",false);
@@ -382,56 +506,88 @@ function nodeBox(n,opts={}){
 }
 
 const CONDUCT=new Set(["feed","bypass","alternative","ring","tie"]);
-function vseg(x,yTop,yBot,cFrom,cTo,open,glyph){
-  const gy=yBot-13;
+function switchGlyph(x,gy,open,swLabel){
+  let g;
+  if(!open){
+    g=`<rect x="${x-5}" y="${gy-5}" width="10" height="10" fill="var(--bg)" stroke="var(--sym)" stroke-width="1.4"/>`;
+  } else {
+    g=`<line x1="${x-6}" y1="${gy-7}" x2="${x+6}" y2="${gy-7}" stroke="var(--sym)" stroke-width="1.4"/>`
+     +`<line x1="${x}" y1="${gy+7}" x2="${x-10}" y2="${gy-5}" stroke="var(--sym)" stroke-width="1.6"/>`
+     +`<circle cx="${x}" cy="${gy+7}" r="2.2" fill="var(--sym)"/>`;
+  }
+  if(swLabel) g+=txt(x+12,gy+4,"start",9.5,600,"var(--muted)",swLabel);
+  return g;
+}
+// vertical drop with its switch at the BUS (top) end, as in the single-line mockup.
+function vseg(x,yTop,yBot,cFrom,cTo,open,glyph,swLabel){
   if(!glyph) return `<line x1="${x}" y1="${yTop}" x2="${x}" y2="${yBot}" stroke="${cTo}" stroke-width="1.8"/>`;
+  const gy=Math.min(yTop+16,(yTop+yBot)/2);
   if(!open){
     return `<line x1="${x}" y1="${yTop}" x2="${x}" y2="${yBot}" stroke="${cTo}" stroke-width="1.8"/>`
-      +`<rect x="${x-5}" y="${gy-5}" width="10" height="10" fill="var(--bg)" stroke="var(--sym)" stroke-width="1.3"/>`;
+         + switchGlyph(x,gy,false,swLabel);
   }
-  const tc=gy-6, pc=gy+6;
-  return `<line x1="${x}" y1="${yTop}" x2="${x}" y2="${tc}" stroke="${cFrom}" stroke-width="1.8"/>`
-    +`<line x1="${x-6}" y1="${tc}" x2="${x+6}" y2="${tc}" stroke="var(--sym)" stroke-width="1.3"/>`
-    +`<line x1="${x}" y1="${pc}" x2="${x-10}" y2="${tc-1}" stroke="var(--sym)" stroke-width="1.3"/>`
-    +`<circle cx="${x}" cy="${pc}" r="2" fill="var(--sym)"/>`
-    +`<line x1="${x}" y1="${pc}" x2="${x}" y2="${yBot}" stroke="${cTo}" stroke-width="1.8"/>`;
+  return `<line x1="${x}" y1="${yTop}" x2="${x}" y2="${gy-7}" stroke="${cFrom}" stroke-width="1.8"/>`
+       + `<line x1="${x}" y1="${gy+7}" x2="${x}" y2="${yBot}" stroke="${cTo}" stroke-width="1.8"/>`
+       + switchGlyph(x,gy,true,swLabel);
 }
-function feedLine(a,b,cFrom,cTo,open){
+function feedLine(a,b,cFrom,cTo,open,swLabel){
   const fromBus=a.type==="bus", toBus=b.type==="bus";
   const ay=a.y+HALF_H(a.type), by=b.y-HALF_H(b.type);
-  if(fromBus){ return vseg(b.x, ay, by, cFrom, cTo, open, true); }
-  if(toBus){  return vseg(a.x, ay, by, cFrom, cTo, open, open); }
+  if(fromBus){ return vseg(b.x, ay, by, cFrom, cTo, open, true, swLabel); }
+  if(toBus){  return vseg(a.x, ay, by, cFrom, cTo, open, open, swLabel); }
   const my=(ay+by)/2;
   return `<polyline points="${a.x},${ay} ${a.x},${my} ${b.x},${my}" fill="none" stroke="${open?cFrom:cTo}" stroke-width="1.8"/>`
-    + vseg(b.x, my, by, cFrom, cTo, open, open);
+    + vseg(b.x, my, by, cFrom, cTo, open, open, swLabel);
 }
 /* ---------- per-tier renderers ---------- */
 function visibleEdges(idset){ return DATA.edges.filter(e=>idset.has(e.from)&&idset.has(e.to)); }
 
 function renderGeneric(parentId, incomer){
   // used for site (no incomer), pod, board
+  const parent = (parentId!==null)? byId[parentId] : null;
+  const isPod = !!(parent && parent.type==="pod");
   const ns = (parentId===null)? kids("__root__") : kids(parentId);
   let nodes = ns.slice();
-  let svg="";
   if (incomer){ nodes=[incomer,...nodes]; }
+  const busNode=nodes.find(n=>n.type==="bus");
+
+  // POD view: relocate the standby genset to hang below the bus (left) as a switched
+  // ATS branch, matching the single-line mockup. purely visual; energisation and
+  // conflict detection run off edges, not xy, so this changes nothing electrical.
+  let gensetId=null;
+  if (isPod && busNode){
+    const gs=nodes.find(n=>n.type==="source");
+    if(gs){ gensetId=gs.id;
+      const below=nodes.filter(n=>n!==busNode && n.type!=="source" && n.y>busNode.y);
+      const rowY=below.length?Math.min(...below.map(n=>n.y)):busNode.y+140;
+      const leftX=below.length?Math.min(...below.map(n=>n.x)):busNode.x;
+      nodes=nodes.map(n=> n.id===gensetId ? {...n,x:leftX-86,y:rowY} : n);
+    }
+  }
+  const pos={}; nodes.forEach(n=>pos[n.id]=n);
   const idset=new Set(nodes.map(n=>n.id));
-  // edges among visible
+  let svg="";
+
   visibleEdges(idset).forEach(e=>{
-    const a=(incomer&&incomer.id===e.from)?incomer:byId[e.from];
-    const b=(incomer&&incomer.id===e.to)  ?incomer:byId[e.to];
+    const a=pos[e.from]||byId[e.from], b=pos[e.to]||byId[e.to];
     if(!a||!b) return;
     if(!CONDUCT.has(e.type)){ svg+=dropper(a,b,"var(--faint)",1.3,true); return; }
     const open=(e.state!=="closed");
+    // genset feeds the bus, but we draw it hanging below as a switched branch (ATS):
+    // swap so the bus is the source end and the switch sits at the top of the drop.
+    if (isPod && a.id===gensetId && b.type==="bus"){
+      svg+=feedLine(b,a,energColor(b.energisation),energColor(a.energisation),open,"ATS");
+      return;
+    }
     svg+=feedLine(a,b,energColor(a.energisation),energColor(b.energisation),open);
   });
-  const busNode=nodes.find(n=>n.type==="bus");
-  let busW=300, minx=null;
+
+  let busW=300;
   if(busNode){ const others=nodes.filter(n=>n!==busNode);
-    const md=Math.max(0,...others.map(o=>Math.abs(o.x-busNode.x))); busW=Math.max(300,2*md+60);
-    minx=others.length?Math.min(...others.map(o=>o.x)):null; }
+    const md=Math.max(0,...others.map(o=>Math.abs(o.x-busNode.x))); busW=Math.max(300,2*md+60); }
   nodes.forEach(n=>{
     let o={};
-    if (n.type==="bus") o={w:busW,lblRight:minx};
+    if (n.type==="bus") o={w:busW};
     else if (n.type==="ring") o={w:120,h:40,sub:n.detail||""};
     svg+=nodeBox(n,o);
   });
@@ -512,7 +668,8 @@ function renderLoadboard(boardId){
     svg+=`<text x="20" y="${ly+24}" font-size="13" font-weight="700" fill="var(--ink)">${expandedCat} &middot; ${count} circuit${count===1?'':'s'}</text>`;
     const cc=6, cw=146, cgap=10, cx0=68, cy0=ly+44, cdy=52, abbr=shortCat(expandedCat);
     const shown=Math.min(count,MAXCARDS);
-    const tags = (expandedCat==="Fan-coil units" && Array.isArray(node.fcu_tags)) ? node.fcu_tags : null;
+    const tags = (node.way_tags && Array.isArray(node.way_tags[expandedCat])) ? node.way_tags[expandedCat]
+               : (expandedCat==="Fan-coil units" && Array.isArray(node.fcu_tags)) ? node.fcu_tags : null;
     for (let k=0;k<shown;k++){
       const r=Math.floor(k/cc), c=k%cc, x=cx0+c*(cw+cgap), y=cy0+r*cdy;
       const lbl = tags && tags[k] ? tags[k] : `${abbr} ${String(k+1).padStart(2,'0')}`;
@@ -537,6 +694,64 @@ function shortCat(c){
 
 function currentLayout(){ return currentParent===null ? "site" : (byId[currentParent].childLayout||"pod"); }
 
+function drawLegend(x,y,w){
+  const lab=(ix,iy,t)=>`<text x="${ix}" y="${iy+4}" font-size="11.5" fill="var(--muted)">${t}</text>`;
+  const ln=(ix,iy,col,dash)=>`<line x1="${ix}" y1="${iy}" x2="${ix+26}" y2="${iy}" stroke="${col}" stroke-width="3.2" ${dash?'stroke-dasharray="5 3"':''} stroke-linecap="round"/>`;
+  const c1=x, c2=x+Math.min(250,w*0.30), c3=x+Math.min(500,w*0.62);
+  let g=`<g class="legend">`;
+  g+=ln(c1,y,"var(--live)")+lab(c1+34,y,"Energised (live)");
+  g+=ln(c2,y,"var(--dead)")+lab(c2+34,y,"De-energised (dead)");
+  g+=ln(c3,y,"var(--cond)")+lab(c3+34,y,"Conditional");
+  const y2=y+28;
+  g+=`<rect x="${c1}" y="${y2-8}" width="30" height="16" rx="8" fill="var(--permit)"/>`+lab(c1+38,y2,"Active permit");
+  g+=`<rect x="${c2}" y="${y2-8}" width="26" height="16" rx="5" fill="none" stroke="var(--conflict)" stroke-width="2" stroke-dasharray="5 3"/>`+lab(c2+34,y2,"Conflict");
+  g+=switchGlyph(c3+11,y2,true,null)+lab(c3+34,y2,"Open switch");
+  g+=`</g>`; return g;
+}
+function renderPod(podId){
+  const ch=kids(podId); const M={}; ch.forEach(n=>M[n.id]=n);
+  const g=suf=>M[podId+"."+suf];
+  const rmu=g("RMU001"),tx=g("MV-TX001"),gen=g("GEN001"),
+        sb=g("DB001"),nb=g("DB003"),ups=g("UPS001");
+  const isReal=n=>n&&n.type!=="breaker"&&!/\.(XQ|XS|XQE)\d/.test(n.id);
+  const fedBy=id=>DATA.edges.filter(e=>e.from===id&&CONDUCT.has(e.type)).map(e=>M[e.to]).filter(isReal);
+  const sbLoads=(sb?fedBy(sb.id):[]).filter(n=>n!==ups&&n!==nb);
+  const nbLoads=(nb?fedBy(nb.id):[]).filter(n=>n!==ups);
+
+  const pos={}; const P=(n,x,y)=>{ if(n) pos[n.id]=Object.assign({},n,{x,y}); };
+  const sbRowY=350, nbRowY=592, upsX=860;
+  P(rmu,150,58); P(tx,150,140);
+  P(gen,110,sbRowY);
+  let x=276; sbLoads.forEach(n=>{ P(n,x,sbRowY); x+=134; });
+  P(ups,upsX,sbRowY);
+  let xn=545; nbLoads.forEach(n=>{ P(n,xn,nbRowY); xn+=126; });
+  function busGeom(busNode,extraX){
+    const xs=[...extraX];
+    DATA.edges.forEach(e=>{ if(e.from===busNode.id&&pos[e.to])xs.push(pos[e.to].x);
+                            if(e.to===busNode.id&&pos[e.from])xs.push(pos[e.from].x); });
+    const mn=Math.min(...xs), mx=Math.max(...xs);
+    return {cx:(mn+mx)/2, w:(mx-mn)+70};
+  }
+  const nbG=nb?busGeom(nb,[upsX]):{cx:430,w:300}; P(nb,nbG.cx,478);   // nb first (no sb dependency)
+  const sbG=sb?busGeom(sb,[150,110,upsX,nbG.cx]):{cx:500,w:300}; P(sb,sbG.cx,238);
+
+  const at=id=>pos[id]||M[id]||byId[id];
+  let svg="";
+  const internal=DATA.edges.filter(e=>e.from.startsWith(podId+".")&&e.to.startsWith(podId+"."));
+  internal.forEach(e=>{
+    const a=at(e.from), b=at(e.to); if(!a||!b||!pos[e.from]||!pos[e.to]) return;
+    if(!CONDUCT.has(e.type)){ svg+=dropper(a,b,"var(--faint)",1.3,true); return; }
+    const open=(e.state!=="closed");
+    if(gen&&e.from===gen.id&&b.type==="bus"){ svg+=feedLine(b,a,energColor(b.energisation),energColor(a.energisation),open,"ATS"); return; }
+    svg+=feedLine(a,b,energColor(a.energisation),energColor(b.energisation),open);
+  });
+  const drawn=new Set();
+  const draw=(n,o)=>{ if(n&&pos[n.id]&&!drawn.has(n.id)){ drawn.add(n.id); svg+=nodeBox(pos[n.id],o||{}); } };
+  draw(sb,{w:sbG.w}); draw(nb,{w:nbG.w});
+  [rmu,tx,gen,ups,...sbLoads,...nbLoads].forEach(n=>draw(n));
+  svg+=drawLegend(40,712,1100);
+  return svg;
+}
 function render(){
   document.getElementById("meta").innerHTML =
     `<b>${DATA.meta.project}</b><br>Snapshot ${fmt(DATA.meta.generated)}`;
@@ -545,7 +760,7 @@ function render(){
   // viewBox: fixed width per tier, height grown to fit the lowest node plus the
   // stubs/labels drawn beneath it, so added rows (CRAHs, 2nd ring chain, longer
   // board schedules) never fall outside the canvas.
-  const W = ({site:1040,ring:1040,pod:960,board:1040,landlord:1040,loadboard:1040}[layout])||1040;
+  const W = ({site:1040,ring:1040,pod:1180,board:1040,landlord:1040,loadboard:1040}[layout])||1040;
   let H;
   if (layout==="loadboard"){
     const node=byId[currentParent];
@@ -560,13 +775,14 @@ function render(){
     const pad = (layout==="ring") ? 100 : 72;   // ring needs room for the A/B feed stubs + tags
     H = Math.max(Math.ceil(maxY+pad), 320);
   }
+  if (layout==="pod") H = 768;   // fixed two-busbar POD canvas
   board.setAttribute("viewBox", `0 0 ${W} ${Math.ceil(H)}`);
   let svg="";
   if (layout==="site"){ svg=renderGeneric(null,null); }
   else if (layout==="ring"){ svg=renderRing(currentParent); }
   else if (layout==="loadboard"){ svg=renderLoadboard(currentParent); }
   else if (layout==="landlord"){ svg=renderGeneric(currentParent,null); }
-  else if (layout==="pod"){ svg=renderGeneric(currentParent,null); }
+  else if (layout==="pod"){ svg=renderPod(currentParent); }
   else { // board: inject the parent board as incomer at top
     const p=byId[currentParent];
     const incomer=Object.assign({},p,{x:520,y:56,_incomer:true,childLayout:null});
