@@ -11,7 +11,8 @@
     --bg:#0e1722; --panel:#17222e; --panel2:#1d2b39; --line:#36495a; --line2:#283845;
     --ink:#e6edf3; --muted:#93a4b3; --faint:#5c6f7e;
     --green:#2fb574; --grey:#6e7e8d; --amber:#e2a72e; --unknown:#34424f;
-    --permit:#f0941f; --conflict:#ef4d52; --link:#5fa8e6;
+    --live:#e24b4a; --dead:#2fb574; --cond:#e2a72e;
+    --permit:#3e7cc2; --conflict:#cf3fb0; --link:#5fa8e6;
   }
   *{box-sizing:border-box;}
   html,body{margin:0;height:100%;}
@@ -118,7 +119,7 @@
   .tile .l{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-top:7px;}
   .tile.warn{border-color:rgba(239,77,82,.5);}
   .tile.warn .n{color:var(--conflict);}
-  .tile.ok .n{color:var(--green);}
+  .tile.ok .n{color:var(--live);}
 
   /* data tables */
   .tbl-wrap{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden;}
@@ -188,9 +189,9 @@
   <aside class="panel">
     <div class="sec">
       <h2>Legend</h2>
-      <div class="legend-row"><span class="sw" style="background:var(--green)"></span>Energised</div>
-      <div class="legend-row"><span class="sw" style="background:var(--grey)"></span>De-energised</div>
-      <div class="legend-row"><span class="sw" style="background:var(--amber)"></span>Conditional</div>
+      <div class="legend-row"><span class="sw" style="background:var(--live)"></span>Energised</div>
+      <div class="legend-row"><span class="sw" style="background:var(--dead)"></span>De-energised</div>
+      <div class="legend-row"><span class="sw" style="background:var(--cond)"></span>Conditional</div>
       <div class="legend-row"><span class="ring" style="border:2.5px solid var(--permit)"></span>Active permit</div>
       <div class="legend-row"><span class="ring" style="border:2.5px dashed var(--permit)"></span>Issued permit</div>
       <div class="legend-row"><span class="ring" style="border:2.5px solid var(--conflict)"></span>Conflict</div>
@@ -274,8 +275,8 @@ let selectedWay = null;     // a clicked card/tile (virtual leaf) for the detail
 const expanded = new Set();
 
 /* helpers */
-const energColor = s => ({energised:"var(--green)",deenergised:"var(--grey)",conditional:"var(--amber)"}[s]||"var(--unknown)");
-const energInk   = s => ({energised:"#5fd6a0",deenergised:"#aebcc9",conditional:"#f0c34f"}[s]||"#9fb0bd");
+const energColor = s => ({energised:"var(--live)",deenergised:"var(--dead)",conditional:"var(--cond)"}[s]||"var(--unknown)");
+const energInk   = s => ({energised:"#f3908f",deenergised:"#6fe0ad",conditional:"#f0c34f"}[s]||"#9fb0bd");
 const permitsFor = id => DATA.permits.filter(p=>p.asset===id);
 const activeFor  = id => permitsFor(id).some(p=>p.status==="active"||p.status==="suspended");
 const issuedFor  = id => permitsFor(id).some(p=>p.status==="issued");
@@ -359,7 +360,8 @@ function renderGeneric(parentId, incomer){
     const b=(incomer&&incomer.id===e.to)  ?incomer:byId[e.to];
     if(!a||!b) return;
     const dashed=(e.type!=="feed")||e.state!=="closed";
-    const col=e.type==="feed"?"var(--line)":"var(--faint)";
+    const tn=byId[e.to];
+    const col=e.type==="feed"?energColor(tn?tn.energisation:"unknown"):"var(--faint)";
     svg+=dropper(a,b,col,e.type==="feed"?1.8:1.6,dashed);
   });
   nodes.forEach(n=>{
@@ -740,8 +742,8 @@ function renderOverview(){
     <div class="tile"><div class="n">${DATA.assets.filter(a=>a.type==='ring').length}</div><div class="l">MV rings</div></div>
     <div class="tile ok"><div class="n">${nEn}</div><div class="l">Energised</div></div>
     <div class="tile"><div class="n" style="color:var(--amber)">${nMix}</div><div class="l">Mixed</div></div>
-    <div class="tile"><div class="n" style="color:var(--grey)">${nDe}</div><div class="l">De-energised</div></div>
-    <div class="tile"><div class="n" style="color:#f3b56b">${totPerm}</div><div class="l">Permits on board</div></div>
+    <div class="tile"><div class="n" style="color:var(--dead)">${nDe}</div><div class="l">De-energised</div></div>
+    <div class="tile"><div class="n" style="color:#79a8df">${totPerm}</div><div class="l">Permits on board</div></div>
     <div class="tile ${totConf?'warn':'ok'}"><div class="n">${totConf}</div><div class="l">Open conflicts</div></div>
   </div>`;
 
