@@ -11,7 +11,7 @@
     --bg:#0e1722; --panel:#17222e; --panel2:#1d2b39; --line:#36495a; --line2:#283845;
     --ink:#e6edf3; --muted:#93a4b3; --faint:#5c6f7e; --sym:#aeb8c2;
     --green:#2fb574; --grey:#6e7e8d; --amber:#e2a72e; --unknown:#34424f;
-    --live:#e24b4a; --dead:#2fb574; --cond:#e2a72e;
+    --live:#e24b4a; --dead:#2fb574; --cond:#e0902e;
     --permit:#3e7cc2; --conflict:#cf3fb0; --link:#5fa8e6;
   }
   *{box-sizing:border-box;}
@@ -316,6 +316,11 @@ function txt(x,y,anchor,size,weight,fill,t){
   return `<rect x="${rx}" y="${y-size+1}" width="${w}" height="${h}" rx="2" fill="var(--bg)"/>`
        + `<text x="${x}" y="${y}" text-anchor="${anchor}" font-size="${size}" font-weight="${weight}" fill="${fill}">${t}</text>`;
 }
+function permitPill(cx,cy,id){
+  const w=String(id).length*6.0+16, h=16;
+  return `<rect x="${cx-w/2}" y="${cy-h/2}" width="${w}" height="${h}" rx="8" fill="var(--permit)" stroke="var(--bg)" stroke-width="1.5"/>`
+       + `<text x="${cx}" y="${cy+3.6}" text-anchor="middle" font-size="9.5" font-weight="700" fill="#fff">${id}</text>`;
+}
 function nodeBox(n,opts={}){
   const live=energColor(n.energisation);
   const act=activeFor(n.id), iss=issuedFor(n.id), conf=conflictsFor(n.id).length>0;
@@ -326,9 +331,8 @@ function nodeBox(n,opts={}){
   if (n.type==="bus"){
     const w=opts.w||300,h=6; bx=x-w/2; by=y-h/2; bw=w; bh=h;
     s+=`<rect x="${bx}" y="${by}" width="${w}" height="${h}" rx="2" fill="${live}" stroke="${sel?'#fff':live}" stroke-width="${sel?2:0.5}"/>`;
-    const lr=opts.lblRight, lblX=(lr!=null)?lr-8:bx+2, lblA=(lr!=null)?"end":"start";
-    s+=txt(lblX,by-9,lblA,12.5,700,"var(--ink)",n.name);
-    if (n.childLayout) s+=txt(lblX,by+20,lblA,10,400,"var(--link)","tap to open schedule");
+    s+=txt(bx+6,by-24,"start",12.5,700,"var(--ink)",n.name);
+    if (n.childLayout) s+=txt(bx+6,by-9,"start",9.5,400,"var(--link)","tap to open schedule");
   }
   else if (n.type==="transformer"){
     const r=12;
@@ -356,10 +360,12 @@ function nodeBox(n,opts={}){
     label=n.name; ly=by+bh+16;
   }
   else if (n.type==="board"){
-    const w=82,h=6; bx=x-w/2; by=y-h/2; bw=w; bh=h;
-    s+=`<rect x="${bx}" y="${by}" width="${w}" height="${h}" rx="2" fill="${live}" stroke="${sel?'#fff':live}" stroke-width="${sel?1.5:0.5}"/>`;
-    label=n.name; ly=by+bh+16;
-    if (n.childLayout) s+=txt(x,by+bh+30,"middle",9.5,400,"var(--link)","tap to open");
+    const w=48,h=5; bx=x-w/2; by=y-h/2; bw=w; bh=h;
+    s+=`<rect x="${bx}" y="${by}" width="${w}" height="${h}" fill="${live}" stroke="${sel?'#fff':live}" stroke-width="${sel?1.5:0.6}"/>`;
+    s+=`<line x1="${bx+6}" y1="${by+h}" x2="${bx+6}" y2="${by+h+6}" stroke="${live}" stroke-width="1.6"/>`;
+    s+=`<line x1="${bx+w-6}" y1="${by+h}" x2="${bx+w-6}" y2="${by+h+6}" stroke="${live}" stroke-width="1.6"/>`;
+    label=n.name; ly=by+bh+22;
+    if (n.childLayout) s+=txt(x,by+bh+36,"middle",9.5,400,"var(--link)","tap to open");
   }
   else {
     const w=opts.w||100,h=opts.h||34; bx=x-w/2; by=y-h/2; bw=w; bh=h;
@@ -370,10 +376,10 @@ function nodeBox(n,opts={}){
   if (label!==null){
     s+=txt(lx,ly,lan,11,600,"var(--ink)",label);
   }
-  if (act||iss){
-    const px=bx+bw+16, py=by+bh/2;
-    s+=`<circle cx="${px}" cy="${py}" r="8" fill="var(--permit)" stroke="var(--bg)" stroke-width="1.5"/>`;
-    s+=`<text x="${px}" y="${py+3.2}" text-anchor="middle" font-size="9.5" font-weight="800" fill="#fff">P</text>`;
+  if ((act||iss) && n.type!=="bus"){
+    const pms=permitsFor(n.id), pid=pms.length?pms[0].id:"PTW";
+    const pillY = (label!==null) ? ly+16 : by+bh+18;
+    s+=permitPill(x, pillY, pid);
   }
   if (conf) s+=ringRect(bx-6,by-6,bw+12,bh+12,"var(--conflict)",true);
   else if (act) s+=ringRect(bx-6,by-6,bw+12,bh+12,"var(--permit)",false);
@@ -382,56 +388,88 @@ function nodeBox(n,opts={}){
 }
 
 const CONDUCT=new Set(["feed","bypass","alternative","ring","tie"]);
-function vseg(x,yTop,yBot,cFrom,cTo,open,glyph){
-  const gy=yBot-13;
+function switchGlyph(x,gy,open,swLabel){
+  let g;
+  if(!open){
+    g=`<rect x="${x-5}" y="${gy-5}" width="10" height="10" fill="var(--bg)" stroke="var(--sym)" stroke-width="1.4"/>`;
+  } else {
+    g=`<line x1="${x-6}" y1="${gy-7}" x2="${x+6}" y2="${gy-7}" stroke="var(--sym)" stroke-width="1.4"/>`
+     +`<line x1="${x}" y1="${gy+7}" x2="${x-10}" y2="${gy-5}" stroke="var(--sym)" stroke-width="1.6"/>`
+     +`<circle cx="${x}" cy="${gy+7}" r="2.2" fill="var(--sym)"/>`;
+  }
+  if(swLabel) g+=txt(x+12,gy+4,"start",9.5,600,"var(--muted)",swLabel);
+  return g;
+}
+// vertical drop with its switch at the BUS (top) end, as in the single-line mockup.
+function vseg(x,yTop,yBot,cFrom,cTo,open,glyph,swLabel){
   if(!glyph) return `<line x1="${x}" y1="${yTop}" x2="${x}" y2="${yBot}" stroke="${cTo}" stroke-width="1.8"/>`;
+  const gy=Math.min(yTop+16,(yTop+yBot)/2);
   if(!open){
     return `<line x1="${x}" y1="${yTop}" x2="${x}" y2="${yBot}" stroke="${cTo}" stroke-width="1.8"/>`
-      +`<rect x="${x-5}" y="${gy-5}" width="10" height="10" fill="var(--bg)" stroke="var(--sym)" stroke-width="1.3"/>`;
+         + switchGlyph(x,gy,false,swLabel);
   }
-  const tc=gy-6, pc=gy+6;
-  return `<line x1="${x}" y1="${yTop}" x2="${x}" y2="${tc}" stroke="${cFrom}" stroke-width="1.8"/>`
-    +`<line x1="${x-6}" y1="${tc}" x2="${x+6}" y2="${tc}" stroke="var(--sym)" stroke-width="1.3"/>`
-    +`<line x1="${x}" y1="${pc}" x2="${x-10}" y2="${tc-1}" stroke="var(--sym)" stroke-width="1.3"/>`
-    +`<circle cx="${x}" cy="${pc}" r="2" fill="var(--sym)"/>`
-    +`<line x1="${x}" y1="${pc}" x2="${x}" y2="${yBot}" stroke="${cTo}" stroke-width="1.8"/>`;
+  return `<line x1="${x}" y1="${yTop}" x2="${x}" y2="${gy-7}" stroke="${cFrom}" stroke-width="1.8"/>`
+       + `<line x1="${x}" y1="${gy+7}" x2="${x}" y2="${yBot}" stroke="${cTo}" stroke-width="1.8"/>`
+       + switchGlyph(x,gy,true,swLabel);
 }
-function feedLine(a,b,cFrom,cTo,open){
+function feedLine(a,b,cFrom,cTo,open,swLabel){
   const fromBus=a.type==="bus", toBus=b.type==="bus";
   const ay=a.y+HALF_H(a.type), by=b.y-HALF_H(b.type);
-  if(fromBus){ return vseg(b.x, ay, by, cFrom, cTo, open, true); }
-  if(toBus){  return vseg(a.x, ay, by, cFrom, cTo, open, open); }
+  if(fromBus){ return vseg(b.x, ay, by, cFrom, cTo, open, true, swLabel); }
+  if(toBus){  return vseg(a.x, ay, by, cFrom, cTo, open, open, swLabel); }
   const my=(ay+by)/2;
   return `<polyline points="${a.x},${ay} ${a.x},${my} ${b.x},${my}" fill="none" stroke="${open?cFrom:cTo}" stroke-width="1.8"/>`
-    + vseg(b.x, my, by, cFrom, cTo, open, open);
+    + vseg(b.x, my, by, cFrom, cTo, open, open, swLabel);
 }
 /* ---------- per-tier renderers ---------- */
 function visibleEdges(idset){ return DATA.edges.filter(e=>idset.has(e.from)&&idset.has(e.to)); }
 
 function renderGeneric(parentId, incomer){
   // used for site (no incomer), pod, board
+  const parent = (parentId!==null)? byId[parentId] : null;
+  const isPod = !!(parent && parent.type==="pod");
   const ns = (parentId===null)? kids("__root__") : kids(parentId);
   let nodes = ns.slice();
-  let svg="";
   if (incomer){ nodes=[incomer,...nodes]; }
+  const busNode=nodes.find(n=>n.type==="bus");
+
+  // POD view: relocate the standby genset to hang below the bus (left) as a switched
+  // ATS branch, matching the single-line mockup. purely visual; energisation and
+  // conflict detection run off edges, not xy, so this changes nothing electrical.
+  let gensetId=null;
+  if (isPod && busNode){
+    const gs=nodes.find(n=>n.type==="source");
+    if(gs){ gensetId=gs.id;
+      const below=nodes.filter(n=>n!==busNode && n.type!=="source" && n.y>busNode.y);
+      const rowY=below.length?Math.min(...below.map(n=>n.y)):busNode.y+140;
+      const leftX=below.length?Math.min(...below.map(n=>n.x)):busNode.x;
+      nodes=nodes.map(n=> n.id===gensetId ? {...n,x:leftX-86,y:rowY} : n);
+    }
+  }
+  const pos={}; nodes.forEach(n=>pos[n.id]=n);
   const idset=new Set(nodes.map(n=>n.id));
-  // edges among visible
+  let svg="";
+
   visibleEdges(idset).forEach(e=>{
-    const a=(incomer&&incomer.id===e.from)?incomer:byId[e.from];
-    const b=(incomer&&incomer.id===e.to)  ?incomer:byId[e.to];
+    const a=pos[e.from]||byId[e.from], b=pos[e.to]||byId[e.to];
     if(!a||!b) return;
     if(!CONDUCT.has(e.type)){ svg+=dropper(a,b,"var(--faint)",1.3,true); return; }
     const open=(e.state!=="closed");
+    // genset feeds the bus, but we draw it hanging below as a switched branch (ATS):
+    // swap so the bus is the source end and the switch sits at the top of the drop.
+    if (isPod && a.id===gensetId && b.type==="bus"){
+      svg+=feedLine(b,a,energColor(b.energisation),energColor(a.energisation),open,"ATS");
+      return;
+    }
     svg+=feedLine(a,b,energColor(a.energisation),energColor(b.energisation),open);
   });
-  const busNode=nodes.find(n=>n.type==="bus");
-  let busW=300, minx=null;
+
+  let busW=300;
   if(busNode){ const others=nodes.filter(n=>n!==busNode);
-    const md=Math.max(0,...others.map(o=>Math.abs(o.x-busNode.x))); busW=Math.max(300,2*md+60);
-    minx=others.length?Math.min(...others.map(o=>o.x)):null; }
+    const md=Math.max(0,...others.map(o=>Math.abs(o.x-busNode.x))); busW=Math.max(300,2*md+60); }
   nodes.forEach(n=>{
     let o={};
-    if (n.type==="bus") o={w:busW,lblRight:minx};
+    if (n.type==="bus") o={w:busW};
     else if (n.type==="ring") o={w:120,h:40,sub:n.detail||""};
     svg+=nodeBox(n,o);
   });
@@ -537,6 +575,20 @@ function shortCat(c){
 
 function currentLayout(){ return currentParent===null ? "site" : (byId[currentParent].childLayout||"pod"); }
 
+function drawLegend(x,y,w){
+  const lab=(ix,iy,t)=>`<text x="${ix}" y="${iy+4}" font-size="11.5" fill="var(--muted)">${t}</text>`;
+  const ln=(ix,iy,col,dash)=>`<line x1="${ix}" y1="${iy}" x2="${ix+26}" y2="${iy}" stroke="${col}" stroke-width="3.2" ${dash?'stroke-dasharray="5 3"':''} stroke-linecap="round"/>`;
+  const c1=x, c2=x+Math.min(250,w*0.30), c3=x+Math.min(500,w*0.62);
+  let g=`<g class="legend">`;
+  g+=ln(c1,y,"var(--live)")+lab(c1+34,y,"Energised (live)");
+  g+=ln(c2,y,"var(--dead)")+lab(c2+34,y,"De-energised (dead)");
+  g+=ln(c3,y,"var(--cond)")+lab(c3+34,y,"Conditional");
+  const y2=y+28;
+  g+=`<rect x="${c1}" y="${y2-8}" width="30" height="16" rx="8" fill="var(--permit)"/>`+lab(c1+38,y2,"Active permit");
+  g+=`<rect x="${c2}" y="${y2-8}" width="26" height="16" rx="5" fill="none" stroke="var(--conflict)" stroke-width="2" stroke-dasharray="5 3"/>`+lab(c2+34,y2,"Conflict");
+  g+=switchGlyph(c3+11,y2,true,null)+lab(c3+34,y2,"Open switch");
+  g+=`</g>`; return g;
+}
 function render(){
   document.getElementById("meta").innerHTML =
     `<b>${DATA.meta.project}</b><br>Snapshot ${fmt(DATA.meta.generated)}`;
@@ -559,6 +611,7 @@ function render(){
     const maxY = vbNodes.length ? Math.max(...vbNodes.map(n=>n.y)) : 300;
     const pad = (layout==="ring") ? 100 : 72;   // ring needs room for the A/B feed stubs + tags
     H = Math.max(Math.ceil(maxY+pad), 320);
+    if (layout==="pod") H += 64;   // room for the legend strip
   }
   board.setAttribute("viewBox", `0 0 ${W} ${Math.ceil(H)}`);
   let svg="";
@@ -566,7 +619,7 @@ function render(){
   else if (layout==="ring"){ svg=renderRing(currentParent); }
   else if (layout==="loadboard"){ svg=renderLoadboard(currentParent); }
   else if (layout==="landlord"){ svg=renderGeneric(currentParent,null); }
-  else if (layout==="pod"){ svg=renderGeneric(currentParent,null); }
+  else if (layout==="pod"){ svg=renderGeneric(currentParent,null) + drawLegend(40, H-46, W-80); }
   else { // board: inject the parent board as incomer at top
     const p=byId[currentParent];
     const incomer=Object.assign({},p,{x:520,y:56,_incomer:true,childLayout:null});
