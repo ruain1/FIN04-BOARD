@@ -2,7 +2,7 @@
      "backend": "supabase",
      "supabase": {
        "url": "https://yccuwkfcaromrjqsehgj.supabase.co",
-       "anonKey": "sb_publishable_dgzckHYv-ShtXHC7lXDcXg_iQaPTZf",
+       "anonKey": "sb_publishable_dgzckHYv-ShtXHC7lXDcXg_iQaPTZf9",
        "lib": "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm"
      }
    }
