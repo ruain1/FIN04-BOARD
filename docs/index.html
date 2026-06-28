@@ -650,10 +650,23 @@ function setEnergisation(id,status){
   if(!can("edit_energisation")) return;
   const a=byId[id]; if(!a) return;
   a.energisation=status; a._manual=true;
+  computeEnergisation();          // isolate/restore propagates to everything fed through this node
+  recomputeConflicts();
   if(typeof computeFlags==="function") computeFlags();
   if(typeof updateTabBadges==="function") updateTabBadges();
   render();
 }
+/* clearing an override hands the node back to derived propagation */
+function clearEnergisation(id){
+  if(!can("edit_energisation")) return;
+  const a=byId[id]; if(!a) return;
+  delete a._manual;
+  computeEnergisation(); recomputeConflicts();
+  if(typeof computeFlags==="function") computeFlags();
+  if(typeof updateTabBadges==="function") updateTabBadges();
+  render();
+}
+window.clearEnergisation=clearEnergisation;
 
 /* ---------- energisation import ---------- */
 const STATUS_MAP = {
@@ -694,15 +707,20 @@ function applyImport(){
   const rows=parseImport(document.getElementById("impText").value);
   const valid=new Set(DATA.assets.map(a=>a.id));
   const emap={}; DATA.assets.forEach(a=>{ if(a.energisation) emap[a.id]=a.energisation; });
-  let applied=0; const badId=[], badStatus=[];
+  let applied=0; const badId=[], badStatus=[], importedIds=new Set();
   rows.forEach(([id,raw])=>{ if(!id) return;
     if(!valid.has(id)){ badId.push(id); return; }
     const st=mapStatus(raw); if(!st){ badStatus.push(id+"="+raw); return; }
-    emap[id]=st; applied++;
+    emap[id]=st; importedIds.add(id); applied++;
   });
   DATA = applyOverlay(structuredClone(TOPOLOGY), {energisation:emap, permits:DATA.permits||[], conflicts:DATA.conflicts||[]});
   DATA.meta.generated = new Date().toISOString();
-  reindex(); computeFlags(); updateTabBadges(); switchView(currentView);
+  reindex();
+  // imported statuses are authoritative field data: pin them so propagation
+  // fills only the un-imported remainder and isolation interactions stay correct.
+  for(const a of DATA.assets){ if(importedIds.has(a.id)) a._manual=true; }
+  initEnergisation();
+  computeFlags(); updateTabBadges(); switchView(currentView);
   document.getElementById("impResult").innerHTML =
     `<b style="color:var(--dead)">${applied} asset${applied===1?'':'s'} updated.</b> `
     + (badId.length?`<span style="color:var(--cond)">${badId.length} unknown id(s): ${badId.slice(0,6).join(", ")}${badId.length>6?' …':''}. </span>`:"")
@@ -760,6 +778,100 @@ function computeFlags(){
   for (const r of kids("__root__")) walk(r.id);
 }
 computeFlags();
+
+/* ---------- switch-state-aware energisation propagation ----------
+   Faithful client port of build_board.py. Supply spreads from the live grid
+   source over CLOSED conducting switches only, plus the container bridges (an
+   MV switchgear carries supply into its POD; a transformer into its
+   source/incomer parent; gensets are standby and never a source). A manually
+   set status is an override: energised/conditional seeds supply and propagates
+   downstream, de-energised ISOLATES that node and everything fed only through
+   it. Open ring/tie points do not conduct, so the ring never back-feeds across
+   an open tie unless an admin closes it. */
+const LIVE_SRC  = new Set(["LANDLORD"]);
+const CONDUCT_T = new Set(["feed","bypass","alternative","ring","tie"]);
+const CONFLICT_LIVE = new Set(["active","issued","suspended"]);
+const isLiveStatus = s => s==="energised"||s==="conditional";
+function buildConduction(){
+  const und={}, fwd={}, add=(m,a,b)=>{(m[a]??=[]).push(b);};
+  for(const e of DATA.edges){
+    if(e.state==="closed" && CONDUCT_T.has(e.type)){
+      add(fwd,e.from,e.to); add(und,e.from,e.to); add(und,e.to,e.from);
+    }
+  }
+  for(const a of DATA.assets){              // container bridges (und only, like the server)
+    const p=a.parent, pt=(p&&byId[p])?byId[p].type:null;
+    if((["pod","mvboard"].includes(pt) && a.type==="switchgear") ||
+       (["source","incomer"].includes(pt) && a.type==="transformer")){
+      add(und,p,a.id); add(und,a.id,p);
+    }
+  }
+  return {und,fwd};
+}
+function computeEnergisation(){
+  const {und}=buildConduction();
+  const sources=new Set([...LIVE_SRC].filter(id=>byId[id]));
+  const blocked=new Set();
+  for(const a of DATA.assets){
+    if(!a._manual) continue;
+    if(a.energisation==="deenergised") blocked.add(a.id);
+    else if(isLiveStatus(a.energisation)) sources.add(a.id);
+  }
+  const live=new Set(), dq=[];
+  for(const s of sources){ if(!blocked.has(s)){ live.add(s); dq.push(s); } }
+  while(dq.length){
+    const x=dq.shift();
+    for(const y of (und[x]||[])){
+      if(blocked.has(y)||live.has(y)) continue;
+      live.add(y); dq.push(y);
+    }
+  }
+  for(const a of DATA.assets){              // pinned keep their set value; derive the rest
+    if(a._manual) continue;
+    a.energisation = live.has(a.id) ? "energised" : "deenergised";
+  }
+  for(const a of DATA.assets){              // POD tiles roll up from their LV main board
+    if(a.type==="pod" && !a._manual){ const db=byId[a.id+".DB001"]; if(db) a.energisation=db.energisation; }
+  }
+}
+function _reach(fwd,a,b){
+  if(a===b) return true;
+  const seen=new Set([a]), q=[a];
+  while(q.length){ const x=q.shift();
+    for(const y of (fwd[x]||[])){ if(y===b) return true; if(!seen.has(y)){ seen.add(y); q.push(y); } } }
+  return false;
+}
+function recomputeConflicts(){
+  const {fwd}=buildConduction();
+  const live=(DATA.permits||[]).filter(p=>CONFLICT_LIVE.has(p.status)&&byId[p.asset]);
+  const out=[];
+  for(let i=0;i<live.length;i++) for(let j=i+1;j<live.length;j++){
+    const A=live[i].asset, B=live[j].asset; let reason="";
+    if(A===B) reason="two live permits on the same asset";
+    else if(_reach(fwd,A,B)) reason=`${byId[A].name} supplies ${byId[B].name} through closed switches`;
+    else if(_reach(fwd,B,A)) reason=`${byId[B].name} supplies ${byId[A].name} through closed switches`;
+    if(reason) out.push({assets:[A,B].sort(), permits:[live[i].id,live[j].id], reason, severity:"high"});
+  }
+  DATA.conflicts=out;
+}
+function toggleSwitch(from,to){
+  if(!can("edit_energisation")) return;
+  const e=DATA.edges.find(e=>e.from===from&&e.to===to);
+  if(!e || !CONDUCT_T.has(e.type)) return;
+  e.state=(e.state==="closed")?"open":"closed"; e._userSwitch=true;
+  computeEnergisation(); recomputeConflicts(); computeFlags();
+  if(typeof updateTabBadges==="function") updateTabBadges();
+  render();
+}
+window.toggleSwitch=toggleSwitch;
+
+/* seed authoritative pins (conditional statuses survive propagation) then derive
+   the rest. Called at load and after every snapshot/import refresh. */
+function initEnergisation(){
+  for(const a of DATA.assets){ if(a.energisation==="conditional") a._manual=true; }
+  computeEnergisation(); recomputeConflicts();
+}
+window.initEnergisation=initEnergisation;
 
 /* ---------- geometry shared ---------- */
 const HALF_H = t => ({bus:3,busway:3,board:3,transformer:22,source:18,switchgear:18,ups:17,cooling:17}[t] ?? 17);
@@ -880,7 +992,7 @@ function nodeBox(n,opts={}){
 }
 
 const CONDUCT=new Set(["feed","bypass","alternative","ring","tie"]);
-function switchGlyph(x,gy,open,swLabel,col){
+function switchGlyph(x,gy,open,swLabel,col,edgeKey){
   col=col||"var(--sym)";
   let g;
   if(!open){
@@ -891,28 +1003,33 @@ function switchGlyph(x,gy,open,swLabel,col){
      +`<circle cx="${x}" cy="${gy+7}" r="2.2" fill="var(--sym)"/>`;
   }
   if(swLabel) g+=txt(x+12,gy+4,"start",9.5,600,"var(--muted)",swLabel);
+  if(edgeKey && typeof can==="function" && can("edit_energisation")){
+    // transparent hit target makes the small glyph easy to tap; click toggles the switch
+    const hit=`<rect x="${x-11}" y="${gy-12}" width="22" height="26" fill="transparent"/>`;
+    return `<g class="sw" data-edge="${edgeKey}" style="cursor:pointer"><title>Toggle switch</title>${hit}${g}</g>`;
+  }
   return g;
 }
 // vertical drop with its switch at the BUS (top) end, as in the single-line mockup.
-function vseg(x,yTop,yBot,cFrom,cTo,open,glyph,swLabel){
+function vseg(x,yTop,yBot,cFrom,cTo,open,glyph,swLabel,edgeKey){
   if(!glyph) return `<line x1="${x}" y1="${yTop}" x2="${x}" y2="${yBot}" stroke="${cFrom}" stroke-width="1.8"/>`;
   const gy=Math.min(yTop+16,(yTop+yBot)/2);
   if(!open){
     return `<line x1="${x}" y1="${yTop}" x2="${x}" y2="${yBot}" stroke="${cFrom}" stroke-width="1.8"/>`
-         + switchGlyph(x,gy,false,swLabel,cFrom);
+         + switchGlyph(x,gy,false,swLabel,cFrom,edgeKey);
   }
   return `<line x1="${x}" y1="${yTop}" x2="${x}" y2="${gy-7}" stroke="${cFrom}" stroke-width="1.8"/>`
        + `<line x1="${x}" y1="${gy+7}" x2="${x}" y2="${yBot}" stroke="${cTo}" stroke-width="1.8"/>`
-       + switchGlyph(x,gy,true,swLabel,cFrom);
+       + switchGlyph(x,gy,true,swLabel,cFrom,edgeKey);
 }
-function feedLine(a,b,cFrom,cTo,open,swLabel){
+function feedLine(a,b,cFrom,cTo,open,swLabel,edgeKey){
   const fromBus=a.type==="bus", toBus=b.type==="bus";
   const ay=a.y+HALF_H(a.type), by=b.y-HALF_H(b.type);
-  if(fromBus){ return vseg(b.x, ay, by, cFrom, cTo, open, true, swLabel); }
-  if(toBus){  return vseg(a.x, ay, by, cFrom, cTo, open, open, swLabel); }
+  if(fromBus){ return vseg(b.x, ay, by, cFrom, cTo, open, true, swLabel, edgeKey); }
+  if(toBus){  return vseg(a.x, ay, by, cFrom, cTo, open, open, swLabel, edgeKey); }
   const my=(ay+by)/2;
   return `<polyline points="${a.x},${ay} ${a.x},${my} ${b.x},${my}" fill="none" stroke="${cFrom}" stroke-width="1.8"/>`
-    + vseg(b.x, my, by, cFrom, cTo, open, open, swLabel);
+    + vseg(b.x, my, by, cFrom, cTo, open, open, swLabel, edgeKey);
 }
 /* ---------- per-tier renderers ---------- */
 function visibleEdges(idset){ return DATA.edges.filter(e=>idset.has(e.from)&&idset.has(e.to)); }
@@ -947,14 +1064,15 @@ function renderGeneric(parentId, incomer){
     const a=pos[e.from]||byId[e.from], b=pos[e.to]||byId[e.to];
     if(!a||!b) return;
     if(!CONDUCT.has(e.type)){ svg+=dropper(a,b,"var(--faint)",1.3,true); return; }
-    const open=(e.state!=="closed");
+    const swOpen=(e.state!=="closed")||(isLiveStatus(a.energisation)&&!isLiveStatus(b.energisation));
+    const ek=`${e.from}|${e.to}`;
     // genset feeds the bus, but we draw it hanging below as a switched branch (ATS):
     // swap so the bus is the source end and the switch sits at the top of the drop.
     if (isPod && a.id===gensetId && b.type==="bus"){
-      svg+=feedLine(b,a,energColor(b.energisation),energColor(a.energisation),open,"ATS");
+      svg+=feedLine(b,a,energColor(b.energisation),energColor(a.energisation),swOpen,"ATS",ek);
       return;
     }
-    svg+=feedLine(a,b,energColor(a.energisation),energColor(b.energisation),open);
+    svg+=feedLine(a,b,energColor(a.energisation),energColor(b.energisation),swOpen,null,ek);
   });
 
   let busW=300;
@@ -979,18 +1097,24 @@ function renderRing(ringId){
   // draw segment links between consecutive members; normal_open shown as a gap with marker
   re.forEach(e=>{
     const a=byId[e.from], b=byId[e.to];
+    const open = e.state!=="closed";
+    const ek=`${e.from}|${e.to}`;
+    const adminSw=(typeof can==="function" && can("edit_energisation"));
+    const dot=(mx,my)=>`<circle cx="${mx}" cy="${my}" r="9" fill="var(--bg)" stroke="${open?'var(--amber)':'var(--dead)'}" stroke-width="1.5"/>`
+      +`<text x="${mx}" y="${my+3.4}" text-anchor="middle" font-size="8.5" font-weight="700" fill="${open?'var(--amber)':'var(--dead)'}">${open?'N/O':'N/C'}</text>`;
+    const tie=(mx,my)=> adminSw
+      ? `<g class="sw" data-edge="${ek}" style="cursor:pointer"><title>Toggle ring tie (${open?'closed→open is N/O':'click to close'})</title><rect x="${mx-16}" y="${my-14}" width="32" height="28" fill="transparent"/>${dot(mx,my)}</g>`
+      : (open?dot(mx,my):"");
     if (Math.abs(a.x-b.x) > 1.5*(1040/(members.length+1))) {
       // closing leg (first<->last): draw an arched return under the row
-      const yy=y+78;
-      const open = e.state!=="closed";
+      const yy=y+78, mx=(a.x+b.x)/2;
       svg+=`<path d="M ${a.x} ${a.y+HALF_H('pod')} C ${a.x} ${yy}, ${b.x} ${yy}, ${b.x} ${b.y+HALF_H('pod')}" fill="none" stroke="var(--faint)" stroke-width="1.6" ${open?'stroke-dasharray="6 4"':''}/>`;
-      if (open){ const mx=(a.x+b.x)/2; svg+=`<text x="${mx}" y="${yy+14}" text-anchor="middle" font-size="10" fill="var(--amber)">ring normally open</text>`; }
+      svg+=tie(mx,yy);
       return;
     }
-    const open = e.state!=="closed";
-    const yb=a.y-HALF_H('pod')-26;
+    const yb=a.y-HALF_H('pod')-26, mx=(a.x+b.x)/2;
     svg+=`<polyline points="${a.x},${a.y-HALF_H('pod')} ${a.x},${yb} ${b.x},${yb} ${b.x},${b.y-HALF_H('pod')}" fill="none" stroke="var(--line)" stroke-width="1.8" ${open?'stroke-dasharray="6 4"':''}/>`;
-    if (open){ const mx=(a.x+b.x)/2; svg+=`<g><circle cx="${mx}" cy="${yb}" r="9" fill="var(--bg)" stroke="var(--amber)" stroke-width="1.5"/><text x="${mx}" y="${yb+3.5}" text-anchor="middle" font-size="9" font-weight="700" fill="var(--amber)">N/O</text></g>`; }
+    svg+=tie(mx,yb);
   });
   // A/B injection stubs
   DATA.edges.filter(e=>(e.from==="MV-A"||e.from==="MV-B")&&idset.has(e.to)).forEach(e=>{
@@ -1116,9 +1240,11 @@ function renderPod(podId){
   internal.forEach(e=>{
     const a=at(e.from), b=at(e.to); if(!a||!b||!pos[e.from]||!pos[e.to]) return;
     if(!CONDUCT.has(e.type)){ svg+=dropper(a,b,"var(--faint)",1.3,true); return; }
-    const open=(e.state!=="closed");
-    if(gen&&e.from===gen.id&&b.type==="bus"){ svg+=feedLine(b,a,energColor(b.energisation),energColor(a.energisation),open,"ATS"); return; }
-    svg+=feedLine(a,b,energColor(a.energisation),energColor(b.energisation),open);
+    // a switch reads OPEN if the edge is open OR it is the live/dead isolation boundary
+    const swOpen=(e.state!=="closed")||(isLiveStatus(a.energisation)&&!isLiveStatus(b.energisation));
+    const ek=`${e.from}|${e.to}`;
+    if(gen&&e.from===gen.id&&b.type==="bus"){ svg+=feedLine(b,a,energColor(b.energisation),energColor(a.energisation),swOpen,"ATS",ek); return; }
+    svg+=feedLine(a,b,energColor(a.energisation),energColor(b.energisation),swOpen,null,ek);
   });
   const drawn=new Set();
   const draw=(n,o)=>{ if(n&&pos[n.id]&&!drawn.has(n.id)){ drawn.add(n.id); svg+=nodeBox(pos[n.id],o||{}); } };
@@ -1168,6 +1294,12 @@ function render(){
   board.querySelectorAll(".node").forEach(g=>{
     const id=g.getAttribute("data-id");
     g.addEventListener("click",()=>onNodeClick(id));
+  });
+  board.querySelectorAll(".sw").forEach(g=>{
+    g.addEventListener("click",ev=>{ ev.stopPropagation();
+      const k=(g.getAttribute("data-edge")||"").split("|");
+      if(k[0]&&k[1]) toggleSwitch(k[0],k[1]);
+    });
   });
   board.querySelectorAll(".catnode").forEach(g=>{
     const cat=g.getAttribute("data-cat");
@@ -1298,12 +1430,13 @@ function renderDetail(){
   const n=byId[selectedId];
   const perms=permitsFor(n.id), confs=conflictsFor(n.id);
   let h=`<div class="detail"><div class="nm">${n.name}</div><div class="ty">${typeLabel(n.type)}${n.label?` &middot; ${n.label}`:""}</div>`;
-  h+=`<div class="kv"><span>Energisation</span><span style="color:${energInk(n.energisation)}">${({energised:'Energised',deenergised:'De-energised',conditional:'Conditional'}[n.energisation]||cap(n.energisation))}${n._manual?' <span class=\"muted\" style=\"font-size:10px\">(set)</span>':''}</span></div>`;
+  h+=`<div class="kv"><span>Energisation</span><span style="color:${energInk(n.energisation)}">${({energised:'Energised',deenergised:'De-energised',conditional:'Conditional'}[n.energisation]||cap(n.energisation))}${n._manual?' <span class=\"muted\" style=\"font-size:10px\">(set)</span>':' <span class=\"muted\" style=\"font-size:10px\">(derived)</span>'}</span></div>`;
   if (can("edit_energisation")){
     h+=`<div class="enset"><span class="lbl">Set status (admin)</span>`
      + `<button class="b-en${n.energisation==='energised'?' active':''}" onclick="setEnergisation('${n.id}','energised')">Energised</button>`
      + `<button class="b-de${n.energisation==='deenergised'?' active':''}" onclick="setEnergisation('${n.id}','deenergised')">De-energised</button>`
      + `<button class="b-co${n.energisation==='conditional'?' active':''}" onclick="setEnergisation('${n.id}','conditional')">Conditional</button></div>`;
+    if (n._manual) h+=`<div style="margin:4px 0 2px"><a onclick="clearEnergisation('${n.id}')" style="cursor:pointer;color:var(--link);font-size:11px">&#8617; Clear override (return to derived)</a></div>`;
   }
   h+=`<div class="kv"><span>Asset tag</span><span class="mono">${n.tag||n.id}</span></div>`;
   if (n.ref) h+=`<div class="kv"><span>Breaker ref</span><span class="mono">${n.ref}</span></div>`;
@@ -1499,6 +1632,7 @@ function renderPermits(){
 }
 
 updateTabBadges();
+initEnergisation();
 switchView("overview");
 
 /* startup: role UI, auth gate, then live overlays (all run on https GitHub Pages) */
@@ -1515,7 +1649,7 @@ fetch('snapshot.json',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(d=>{
     const emap={}; d.assets.forEach(a=>{ if(a.energisation) emap[a.id]=a.energisation; });
     DATA = applyOverlay(structuredClone(TOPOLOGY), {energisation:emap, permits:d.permits||DATA.permits, conflicts:d.conflicts||DATA.conflicts});
     if(d.meta && d.meta.generated) DATA.meta.generated=d.meta.generated;
-    reindex(); computeFlags(); updateTabBadges(); switchView(currentView);
+    reindex(); initEnergisation(); computeFlags(); updateTabBadges(); switchView(currentView);
   }
 }).catch(()=>{});
 </script>
